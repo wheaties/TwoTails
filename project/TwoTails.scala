@@ -21,7 +21,14 @@ object TwoTails{
           "-language:existentials",
           "-unchecked",
           "-Xfuture"),
-        scalacOptions in Test += "-Xplugin:" + (packageBin in Compile).value,
+        scalacOptions in Test ++= Seq(
+          "-Xplugin:" + (packageBin in Compile).value,
+          "-verbose",
+          "-Xprint-types",
+          "-Xlog-reflective-calls",
+          "-Xprint:twotails",
+          "-Ylog:twotails"
+        ),
         pomExtra := pom,
         publishTo <<= version { v: String =>
           val nexus = "https://oss.sonatype.org/"

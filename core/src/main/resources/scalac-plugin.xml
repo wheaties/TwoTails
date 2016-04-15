@@ -1,0 +1,5 @@
+<!-- $Id$ -->
+<plugin>
+  <name>twotails</name>
+  <classname>twotails.TwoTailsPlugin</classname>
+</plugin>
