@@ -51,45 +51,52 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       recs.result() match{
         case Nil => template
         case head :: Nil => Template(parents, valDef, convertTailRec(body, head))
-        case defs => Template(parents, valDef, convertMutualRec(body, defs))
+        case defs => Template(parents, valDef, convertMutualRec(template.symbol.owner, body, defs))
       }
     }
 
     val mtrec: Symbol = rootMirror.getRequiredClass("twotails.mutualrec")
+    //val tred = AnnotationInfo()
+    //val trec = AnnotationInfo(appliedType(TailrecClass, ???), Nil, Nil)
 
     def hasMutualRec(ddef: DefDef) = ddef.symbol.annotations.exists(_.tpe.typeSymbol == mtrec)
 
     def convertTailRec(body: List[Tree], defdef: DefDef): List[Tree] = body.map{
       case ddef @ DefDef(mods, name, tp, vp, tpt, rhs) if hasMutualRec(ddef) =>
-        val newMods = mods.mapAnnotations{
-          _.map{ anno => if(anno.symbol == mtrec) q"new scala.annotation.tailrec" else anno }
+        val newDef = treeCopy.DefDef(ddef, mods, name, tp, vp, tpt, rhs)
+
+        //TODO: This is just to figure out how to make a scala.annotation.tailrec
+        ddef.symbol.annotations match{
+          case AnnotationInfo(l, r, t) :: _ => 
+            System.out.println(l)
+            System.out.println(r)
+            System.out.println(t)
+
+          case _ => ()
         }
-        DefDef(newMods, name, tp, vp, tpt, transform(rhs))
-      case x: ClassDef => transform(x)
-      case x: ModuleDef => transform(x)
+        newDef.symbol.removeAnnotation(mtrec)
+          //.setAnnotations(trec :: Nil)
+        newDef
       case item => item
     }
 
-    def convertMutualRec(body: List[Tree], defdef: List[DefDef]): List[Tree] ={
+    def convertMutualRec(owner: Symbol, body: List[Tree], defdef: List[DefDef]): List[Tree] ={
       val name = TermName("mutualrec_fn") //something else, lest we get shadowing
       val mapping: Map[DefDef, DefDef] = defdef.zipWithIndex.map{
         case (dd, i) => (dd, defsubstitute(i, dd, name))
       }(breakOut)
       
-      body.map{
-        case x: DefDef => mapping.getOrElse(x, x)
-        case x: ClassDef => transform(x)
-        case x: ModuleDef => transform(x)
-        case other => other
+      val newBody = body.map{
+        case x: DefDef => mapping.getOrElse(x, transform(x))
+        case other => transform(other)
       }
+
+      newBody ::: List(mutualSubstitute(owner, name, defdef))
     }
 
     //TODO: eventually must handle default args and arg lists of different arity.
-    //TODO: handle protected, private defs
     def defsubstitute(indx: Int, oldDef: DefDef, mutual: TermName, flagSet: FlagSet = FINAL): DefDef = {
-  	  val DefDef(Modifiers(_, privateWithin, annotations), name, tp, vp, tpt, _) = oldDef
-  	  val filteredAnnotations = annotations.filter{ _.symbol != mtrec }
-  	  val mods = Modifiers(flagSet, privateWithin, filteredAnnotations)
+  	  val DefDef(mods, name, tp, vp, tpt, _) = oldDef
   	  val mappedArgs = vp map{
   	  	_.map{ x => Ident(x.name) }
   	  }
@@ -98,32 +105,47 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
   	  	case Nil => (Literal(Constant(indx)) :: Nil) :: Nil
   	  }
 
-  	  q"$mods def $name[..$tp](...$vp): $tpt ={ $mutual(...$args) }"
+      val newDef = treeCopy.DefDef(oldDef, mods, name, tp, vp, tpt, q"$mutual(...$args)")
+      newDef.symbol.removeAnnotation(mtrec)
+      newDef
+    }
+
+    def mutualSubstitute(owner: Symbol, mutual: TermName, defdef: List[DefDef]): Tree ={
+      val indexed = defdef.zipWithIndex
+      val symbols: Map[Symbol, Int] = indexed.map{
+        case (x: DefDef, i) => (x.symbol, i)
+      }(breakOut)
+
+      val cases = indexed.map{
+        case (DefDef(_, name, _, vp, _, body), i) =>
+          val newBody = new NameReplaceTransformer(symbols, mutual).transform(body)
+          cq"$i => $newBody"
+      }
+      val body = q"(indx: @scala.annotation.switch) match{ case ..$cases }"
+
+      val DefDef(_, _, tp, vp, _, _) = defdef.head
+      val vps = vp match{
+        case Nil => (q"val indx: Int" :: Nil) :: Nil
+        case head :: tail => (q"val indx: Int" :: head) :: tail
+      }
+
+      val meth = mkNewMethod(owner, defdef.head, mutual)
+      val DefDef(mods, name, _, _, tpt, _) = meth
+      val newDef = treeCopy.DefDef(meth, mods, name, tp, vps, tpt, body)
+      localTyper.typed(newDef)
+    }
+
+    def mkNewMethod(owner: Symbol, base: DefDef, name: TermName, flags: FlagSet = FINAL | PRIVATE): DefDef ={
+      val DefDef(_, _, _, _, _, body) = base
+      val methSym = owner.newMethod(name, NoPosition, flags)
+      //TODO: add in additional parameters (that's the Nil portion)
+      methSym setInfo MethodType(Nil, base.symbol.tpe.resultType)
+      methSym.owner = base.symbol.owner
+      DefDef(methSym, body)
     }
   }
 
-  def mutualSubstitute(mutual: TermName, defdef: List[DefDef]): DefDef ={
-  	val indexed = defdef.zipWithIndex
-    val symbols: Map[Symbol, Int] = indexed.map{
-      case (x: DefDef, i) => (x.symbol, i)
-    }(breakOut)
-    val cases = indexed.map{
-      case (DefDef(_, name, _, vp, _, body), i) =>
-        val newBody = new NameReplaceTransformer(symbols, mutual).transform(body)
-        cq"$i => $newBody"
-    }
-    val (tparams, vparams, tpt) = defdef match{
-      case DefDef(_, _, tp, vp, t, _) :: tail => 
-        val vps = vp match{
-          case Nil => (q"indx: Int" :: Nil) :: Nil
-          case head :: tail => (q"indx: Int" :: head) :: tail
-        }
-
-        (tp, vps, t)
-    }
- 
-    q"@scala.annotation.tailrec private final def $mutual[..$tparams](...$vparams): $tpt ={ (indx: @scala.annotation.switch) match{ case ..$cases } }"
-  }
+  
 
   class NameReplaceTransformer(symbols: Map[Symbol, Int], mutual: TermName) extends Transformer{
   	override def transform(tree: Tree): Tree = tree match{
