@@ -1,12 +1,11 @@
 package twotails
 
-import scala.annotation.{StaticAnnotation, compileTimeOnly}
+import scala.annotation.{StaticAnnotation, compileTimeOnly, switch}
 import scala.tools.nsc.{Global, Phase}
-import scala.tools.nsc.ast.TreeDSL
 import scala.tools.nsc.plugins.{Plugin, PluginComponent}
 import scala.tools.nsc.symtab.Flags._
-import scala.tools.nsc.transform.{InfoTransform, Transform, TypingTransformers}
-import collection.mutable.ListBuffer
+import scala.tools.nsc.transform.{Transform, TypingTransformers}
+import collection.mutable.{ListBuffer, Map => MMap}
 import collection.breakOut
 
 @compileTimeOnly("Somehow this didn't get processed as part of the compilation.")
@@ -19,7 +18,7 @@ class TwoTailsPlugin(val global: Global) extends Plugin{
 }
 
 //TODO: In the future can consider mutualrec from within a def but for now only objects, traits and classes.
-//TODO: Does this actually add a new phase? Still get warning message... "Transform" should do that...
+//TODO: must require that them mutualrec methods are "final"
 class MutualRecComponent(val plugin: Plugin, val global: Global) 
     extends PluginComponent with Transform with TypingTransformers {//with TreeDSL{
   import global._
@@ -31,27 +30,38 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
   def newTransformer(unit: CompilationUnit) = new MutualRecTransformer(unit)
 
-  //TODO: This only handles top level class, trait and object. Does not handle nested structures.
-  class MutualRecTransformer(unit: CompilationUnit) extends TypingTransformer(unit){
-    override def transform(tree: Tree): Tree = tree match{
-      case ClassDef(mods, name, tparams, body) => ClassDef(mods, name, tparams, transformBody(body))
-      case ModuleDef(mods, name, body) => ModuleDef(mods, name, transformBody(body))
-      case _ => super.transform(tree)
+  final class MutualRecTransformer(unit: CompilationUnit) extends TypingTransformer(unit){
+
+    //Thanks @retronym
+    override def transformStats(stats: List[Tree], exprOwner: Symbol): List[Tree] = {
+      val flattened = stats.flatMap {
+        case Block(st, EmptyTree) => st
+        case x => x :: Nil
+      }
+      super.transformStats(flattened, exprOwner)
     }
 
-    def transformBody(template: Template): Template ={
+    override def transform(tree: Tree): Tree = super.transform{
+      curTree = tree
+      tree match{
+        case cd @ ClassDef(mods, name, tparams, body) => treeCopy.ClassDef(cd, mods, name, tparams, transformBody(tree, body))
+        case md @ ModuleDef(mods, name, body) => treeCopy.ModuleDef(md, mods, name, transformBody(tree, body))
+        case _ => tree
+      }
+    }
+
+    def transformBody(root: Tree, template: Template): Template ={
       val Template(parents, valDef, body) = template
 
-      val recs = ListBuffer.empty[DefDef]
-      body.foreach{
-        case ddef: DefDef if hasMutualRec(ddef) => recs += ddef
-        case _ =>
+      val cnt = body.count{
+        case ddef: DefDef => hasMutualRec(ddef)
+        case _ => false
       }
 
-      recs.result() match{
-        case Nil => template
-        case head :: Nil => Template(parents, valDef, convertTailRec(body, head))
-        case defs => Template(parents, valDef, convertMutualRec(template.symbol.owner, body, defs))
+      (cnt: @switch) match{
+        case 0 => template
+        case 1 => convertTailRec(body); template
+        case _ => treeCopy.Template(template, parents, valDef, convertMutualRec(root, body))
       }
     }
 
@@ -61,105 +71,122 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
     def hasMutualRec(ddef: DefDef) = ddef.symbol.annotations.exists(_.tpe.typeSymbol == mtrec)
 
-    def convertTailRec(body: List[Tree], defdef: DefDef): List[Tree] = body.map{
-      case ddef @ DefDef(mods, name, tp, vp, tpt, rhs) if hasMutualRec(ddef) =>
-        val newDef = treeCopy.DefDef(ddef, mods, name, tp, vp, tpt, rhs)
-
-        //TODO: This is just to figure out how to make a scala.annotation.tailrec
-        ddef.symbol.annotations match{
-          case AnnotationInfo(l, r, t) :: _ => 
-            System.out.println(l)
-            System.out.println(r)
-            System.out.println(t)
-
-          case _ => ()
-        }
-        newDef.symbol.removeAnnotation(mtrec)
+    //In case there's just one, convert to a @tailrec. No reason to add a whole new method.
+    def convertTailRec(body: List[Tree]): Unit = body.foreach{
+      case ddef: DefDef if hasMutualRec(ddef) => 
+        ddef.symbol.removeAnnotation(mtrec)
           //.setAnnotations(trec :: Nil)
-        newDef
-      case item => item
+      case _ => 
     }
 
-    def convertMutualRec(owner: Symbol, body: List[Tree], defdef: List[DefDef]): List[Tree] ={
-      val name = TermName("mutualrec_fn") //something else, lest we get shadowing
-      val mapping: Map[DefDef, DefDef] = defdef.zipWithIndex.map{
-        case (dd, i) => (dd, defsubstitute(i, dd, name))
-      }(breakOut)
+    def convertMutualRec(root: Tree, body: List[Tree]): List[Tree] ={
+      val (head :: tail, everythingElse) = body.partition{
+        case ddef: DefDef => hasMutualRec(ddef)
+        case _ => false
+      }
+
+      //Right here making the assumption that every method that's mutualrec has both the same named arguments
+      //with potentially the same default arguments. Will need to handle that in the future as a TODO.
+      val methSym = mkNewMethodSymbol(head.symbol)
+      val rhs = mkNewMethodRhs(methSym, head :: tail)
+      val methTree = mkNewMethodTree(methSym, root, rhs)
+      val forwardedTrees = forwardTrees(methSym, head :: tail)
+
+      Block(everythingElse ::: (methTree :: forwardedTrees), EmptyTree) :: Nil
+    }
+
+    def mkNewMethodSymbol(symbol: Symbol, 
+                          name: TermName = TermName("mutualrec_fn"), 
+                          flags: FlagSet = FINAL | PRIVATE | ARTIFACT): Symbol ={
+      val methSym = symbol.cloneSymbol(symbol.owner, flags, name)
+      val param = methSym.newSyntheticValueParam(definitions.IntTpe, TermName("indx"))
       
-      val newBody = body.map{
-        case x: DefDef => mapping.getOrElse(x, transform(x))
-        case other => transform(other)
+      methSym.modifyInfo {
+        case GenPolyType(tparams, MethodType(params, res)) => GenPolyType(tparams, MethodType(param :: params, res))
       }
-
-      newBody ::: List(mutualSubstitute(owner, name, defdef))
+      methSym.removeAnnotation(mtrec)
+      localTyper.namer.enterInScope(methSym)
     }
 
-    //TODO: eventually must handle default args and arg lists of different arity.
-    def defsubstitute(indx: Int, oldDef: DefDef, mutual: TermName, flagSet: FlagSet = FINAL): DefDef = {
-  	  val DefDef(mods, name, tp, vp, tpt, _) = oldDef
-  	  val mappedArgs = vp map{
-  	  	_.map{ x => Ident(x.name) }
-  	  }
-  	  val args = mappedArgs match{
-  	  	case head :: tail => (Literal(Constant(indx)) :: head) :: tail
-  	  	case Nil => (Literal(Constant(indx)) :: Nil) :: Nil
-  	  }
+    def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree ={
+      val defSymbols = defdef.map(_.symbol).zipWithIndex.toMap
+      val defrhs = defdef.map{ tree => //newdefs.map{ tree =>
+        val DefDef(_, _, _, vparams, _, rhs) = tree
 
-      val newDef = treeCopy.DefDef(oldDef, mods, name, tp, vp, tpt, q"$mutual(...$args)")
-      newDef.symbol.removeAnnotation(mtrec)
-      newDef
-    }
+        val origTparams = tree.symbol.info.typeParams
+        val (oldSkolems, deskolemized) = if(origTparams.isEmpty) (Nil, Nil) else{
+          val skolemSubst = MMap.empty[Symbol, Symbol]
+          rhs.foreach{
+            _.tpe.foreach {
+              case tp if tp.typeSymbolDirect.isSkolem =>
+                val tparam = tp.typeSymbolDirect.deSkolemize
+                if (!skolemSubst.contains(tparam) && origTparams.contains(tparam)) {
+                  skolemSubst(tp.typeSymbolDirect) = methSym.typeParams(origTparams.indexOf(tparam))
+                }
+              case _ =>
+            }
+          }
+          skolemSubst.toList.unzip
+        }
 
-    def mutualSubstitute(owner: Symbol, mutual: TermName, defdef: List[DefDef]): Tree ={
-      val indexed = defdef.zipWithIndex
-      val symbols: Map[Symbol, Int] = indexed.map{
-        case (x: DefDef, i) => (x.symbol, i)
-      }(breakOut)
+        val old = oldSkolems ::: tree.symbol.typeParams ::: vparams.flatMap(_.map(_.symbol))
+        val neww = deskolemized ::: methSym.typeParams ::: methSym.info.paramss.flatten.drop(1)
 
-      val cases = indexed.map{
-        case (DefDef(_, name, _, vp, _, body), i) =>
-          val newBody = new NameReplaceTransformer(symbols, mutual).transform(body)
-          cq"$i => $newBody"
-      }
-      val body = q"(indx: @scala.annotation.switch) match{ case ..$cases }"
+        val replacedRhs = new MutualCallTransformer(methSym, defSymbols, unit).transform(rhs)
 
-      val DefDef(_, _, tp, vp, _, _) = defdef.head
-      val vps = vp match{
-        case Nil => (q"val indx: Int" :: Nil) :: Nil
-        case head :: tail => (q"val indx: Int" :: head) :: tail
+        super.transform(replacedRhs)
+          .changeOwner((tree.symbol, methSym)) //TODO: look into what these are doing
+          .substituteSymbols(old, neww) //possibly they unlock how to do "indx" below
       }
 
-      val meth = mkNewMethod(owner, defdef.head, mutual)
-      val DefDef(mods, name, _, _, tpt, _) = meth
-      val newDef = treeCopy.DefDef(meth, mods, name, tp, vps, tpt, body)
-      localTyper.typed(newDef)
+      val cases = defrhs.zipWithIndex.map{
+      //val cases = newdefs.zipWithIndex.map{
+        case (body, i) => cq"$i => $body"
+      }
+
+      q"(indx: @scala.annotation.switch) match{ case ..$cases }"
     }
 
-    def mkNewMethod(owner: Symbol, base: DefDef, name: TermName, flags: FlagSet = FINAL | PRIVATE): DefDef ={
-      val DefDef(_, _, _, _, _, body) = base
-      val methSym = owner.newMethod(name, NoPosition, flags)
-      //TODO: add in additional parameters (that's the Nil portion)
-      methSym setInfo MethodType(Nil, base.symbol.tpe.resultType)
-      methSym.owner = base.symbol.owner
-      DefDef(methSym, body)
+    def mkNewMethodTree(methSym: Symbol, tree: Tree, rhs: Tree): Tree ={
+      localTyper.typedPos(tree.symbol.pos)(DefDef(methSym, rhs))
+    }
+
+    //TODO: eventually must handle default args and arg lists of different arity or does it do that already?
+    def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
+  	  case (tree, indx) =>
+        val DefDef(mods, _, _, vparams @ (vp :: vps), _, _) = tree
+        val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
+        val forwarderTree = (Apply(gen.mkAttributedRef(tree.symbol.owner.thisType, methSym), newVp) /: vps){ 
+          (fn, params) => Apply(fn, params map gen.paramToArg)
+        }
+        val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
+        forwarded.symbol.removeAnnotation(mtrec)
+        forwarded
     }
   }
 
-  
+  class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Int], unit: CompilationUnit) extends TypingTransformer(unit){
+    override def transform(tree: Tree): Tree = tree match{
 
-  class NameReplaceTransformer(symbols: Map[Symbol, Int], mutual: TermName) extends Transformer{
-  	override def transform(tree: Tree): Tree = tree match{
-  	  case q"$fn(...$args)" if symbols.contains(fn.symbol) => q"$mutual(...${newArgs(fn, args)})"
-  	  case q"$fn[..$tp](...$args)" if symbols.contains(fn.symbol) => q"$mutual[..$tp](...${newArgs(fn, args)})"
-  	  case _ => super.transform(tree)
-  	}
+      //TODO: need to come up with a way to replace this with that.
+      case root: Apply if containsSym(tree) => localTyper.typedPos(tree.symbol.pos)(mkApply(root, tree))
+      case _ => super.transform(tree)
+    }
 
-  	def newArgs(fn: Tree, args: List[List[Tree]]): List[List[Tree]] ={
-  	  val indx: Int = symbols(fn.symbol)
-  	  args match{
-  	    case Nil => (Literal(Constant(indx)) :: Nil) :: Nil
-  	    case head :: tail => (Literal(Constant(indx)) :: head) :: tail
-  	  }
-  	}
+    //TODO: TypeApply
+    def containsSym(tree: Tree): Boolean = tree match{
+      case Apply(ap: Apply, _) => containsSym(ap)
+      case Apply(fn, _) => symbols.contains(fn.symbol)
+      case _ => false
+    }
+
+    //TODO: TypeApply here or above in transform?
+    def mkApply(root: Tree, tree: Tree): Tree = tree match{
+      case Apply(fn, args) if symbols.contains(fn.symbol) => 
+        val indxParam = localTyper.typed(Literal(Constant(symbols(fn.symbol))))
+        Apply(gen.mkAttributedRef(root.symbol.owner.thisType, methSym), indxParam :: transformTrees(args))
+      case Apply(funcTree, args) => Apply(mkApply(root, funcTree), transformTrees(args))
+      case _ => tree
+    }
   }
 }
