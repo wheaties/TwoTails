@@ -29,6 +29,9 @@ object TwoTails{
           "-Xprint:twotails",
           "-Ylog:twotails"
         ),
+        libraryDependencies ++= Seq(
+          "org.scalatest" %% "scalatest" % "2.2.6" % "test"
+        ),
         pomExtra := pom,
         publishTo <<= version { v: String =>
           val nexus = "https://oss.sonatype.org/"

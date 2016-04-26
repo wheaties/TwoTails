@@ -65,7 +65,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       }
     }
 
-    val mtrec: Symbol = rootMirror.getRequiredClass("twotails.mutualrec")
+    private final val mtrec: Symbol = rootMirror.getRequiredClass("twotails.mutualrec")
     //val tred = AnnotationInfo()
     //val trec = AnnotationInfo(appliedType(TailrecClass, ???), Nil, Nil)
 
@@ -97,7 +97,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
     def mkNewMethodSymbol(symbol: Symbol, 
                           name: TermName = TermName("mutualrec_fn"), 
-                          flags: FlagSet = FINAL | PRIVATE | ARTIFACT): Symbol ={
+                          flags: FlagSet = METHOD | FINAL | PRIVATE | ARTIFACT): Symbol ={
       val methSym = symbol.cloneSymbol(symbol.owner, flags, name)
       val param = methSym.newSyntheticValueParam(definitions.IntTpe, TermName("indx"))
       
@@ -110,7 +110,8 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
     def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree ={
       val defSymbols = defdef.map(_.symbol).zipWithIndex.toMap
-      val defrhs = defdef.map{ tree => //newdefs.map{ tree =>
+      val callTransformer = new MutualCallTransformer(methSym, defSymbols, unit)
+      val defrhs = defdef.map{ tree =>
         val DefDef(_, _, _, vparams, _, rhs) = tree
 
         val origTparams = tree.symbol.info.typeParams
@@ -132,15 +133,14 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         val old = oldSkolems ::: tree.symbol.typeParams ::: vparams.flatMap(_.map(_.symbol))
         val neww = deskolemized ::: methSym.typeParams ::: methSym.info.paramss.flatten.drop(1)
 
-        val replacedRhs = new MutualCallTransformer(methSym, defSymbols, unit).transform(rhs)
+        val replacedRhs = callTransformer.transform(rhs)
 
         super.transform(replacedRhs)
-          .changeOwner((tree.symbol, methSym)) //TODO: look into what these are doing
-          .substituteSymbols(old, neww) //possibly they unlock how to do "indx" below
+          .changeOwner((tree.symbol, methSym))
+          .substituteSymbols(old, neww)
       }
 
       val cases = defrhs.zipWithIndex.map{
-      //val cases = newdefs.zipWithIndex.map{
         case (body, i) => cq"$i => $body"
       }
 
@@ -167,8 +167,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
   class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Int], unit: CompilationUnit) extends TypingTransformer(unit){
     override def transform(tree: Tree): Tree = tree match{
-
-      //TODO: need to come up with a way to replace this with that.
       case root: Apply if containsSym(tree) => localTyper.typedPos(tree.symbol.pos)(mkApply(root, tree))
       case _ => super.transform(tree)
     }
@@ -177,16 +175,17 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     def containsSym(tree: Tree): Boolean = tree match{
       case Apply(ap: Apply, _) => containsSym(ap)
       case Apply(fn, _) => symbols.contains(fn.symbol)
-      case _ => false
+      case _ => symbols.contains(tree.symbol)
     }
 
     //TODO: TypeApply here or above in transform?
-    def mkApply(root: Tree, tree: Tree): Tree = tree match{
-      case Apply(fn, args) if symbols.contains(fn.symbol) => 
+    //TODO: remove debug prints
+    def mkApply(root: Tree, tree: Tree): Tree = tree match{        
+      case Apply(fn: Apply, args) => System.out.println(show(args)); Apply(mkApply(root, fn), transformTrees(args))
+      case Apply(fn, args) => 
+        System.out.println(show(args));
         val indxParam = localTyper.typed(Literal(Constant(symbols(fn.symbol))))
         Apply(gen.mkAttributedRef(root.symbol.owner.thisType, methSym), indxParam :: transformTrees(args))
-      case Apply(funcTree, args) => Apply(mkApply(root, funcTree), transformTrees(args))
-      case _ => tree
     }
   }
 }
