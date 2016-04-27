@@ -1,12 +1,11 @@
 package twotails
 
-import scala.annotation.{StaticAnnotation, compileTimeOnly, switch}
+import scala.annotation.{StaticAnnotation, compileTimeOnly, switch, tailrec}
 import scala.tools.nsc.{Global, Phase}
 import scala.tools.nsc.plugins.{Plugin, PluginComponent}
 import scala.tools.nsc.symtab.Flags._
 import scala.tools.nsc.transform.{Transform, TypingTransformers}
-import collection.mutable.{ListBuffer, Map => MMap}
-import collection.breakOut
+import collection.mutable.{Map => MMap}
 
 @compileTimeOnly("Somehow this didn't get processed as part of the compilation.")
 final class mutualrec extends StaticAnnotation
@@ -153,7 +152,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       localTyper.typedPos(tree.symbol.pos)(DefDef(methSym, rhs))
     }
 
-    //TODO: eventually must handle default args and arg lists of different arity or does it do that already?
     def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
   	  case (tree, indx) =>
         val DefDef(mods, _, _, vparams @ (vp :: vps), _, _) = tree
@@ -169,24 +167,28 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
   class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Int], unit: CompilationUnit) extends TypingTransformer(unit){
     override def transform(tree: Tree): Tree = tree match{
-      case root: Apply if containsSym(tree) => localTyper.typedPos(tree.symbol.pos)(mkApply(root, tree))
+      case root: Apply if containsSym(tree) => mkApply(root, tree)
+      /*case q"fn(...exprss)" if symbols.contains(fn.symbol) => 
+        val indxParam = localTyper.typed(Literal(Constant(symbols(fn.symbol))))
+        val ref = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
+        val args = exprss.map(transformTrees)
+        q"$ref(...$args)"*/
       case _ => super.transform(tree)
     }
 
     //TODO: TypeApply
-    def containsSym(tree: Tree): Boolean = tree match{
+    @tailrec final def containsSym(tree: Tree): Boolean = tree match{
       case Apply(ap: Apply, _) => containsSym(ap)
       case Apply(fn, _) => symbols.contains(fn.symbol)
       case _ => symbols.contains(tree.symbol)
     }
 
     //TODO: TypeApply here or above in transform?
-    //TODO: remove debug prints
     def mkApply(root: Tree, tree: Tree): Tree = tree match{        
-      case Apply(fn: Apply, args) => Apply(mkApply(root, fn), transformTrees(args))
+      case Apply(fn: Apply, args) => treeCopy.Apply(tree, mkApply(root, fn), transformTrees(args))
       case Apply(fn, args) =>
         val indxParam = localTyper.typed(Literal(Constant(symbols(fn.symbol))))
-        Apply(gen.mkAttributedRef(root.symbol.owner.thisType, methSym), indxParam :: transformTrees(args))
+        treeCopy.Apply(tree, gen.mkAttributedRef(root.symbol.owner.thisType, methSym), indxParam :: transformTrees(args))
     }
   }
 }
