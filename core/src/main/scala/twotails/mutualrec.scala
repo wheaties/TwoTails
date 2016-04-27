@@ -66,16 +66,16 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
 
     private final val mtrec: Symbol = rootMirror.getRequiredClass("twotails.mutualrec")
-    //val tred = AnnotationInfo()
-    //val trec = AnnotationInfo(appliedType(TailrecClass, ???), Nil, Nil)
+    private final val trec = AnnotationInfo(definitions.TailrecClass.tpe, Nil, Nil)
 
     def hasMutualRec(ddef: DefDef) = ddef.symbol.annotations.exists(_.tpe.typeSymbol == mtrec)
 
     //In case there's just one, convert to a @tailrec. No reason to add a whole new method.
     def convertTailRec(body: List[Tree]): Unit = body.foreach{
       case ddef: DefDef if hasMutualRec(ddef) => 
-        ddef.symbol.removeAnnotation(mtrec)
-          //.setAnnotations(trec :: Nil)
+        ddef.symbol
+          .removeAnnotation(mtrec)
+          .setAnnotations(trec :: Nil)
       case _ => 
     }
 
@@ -104,7 +104,9 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       methSym.modifyInfo {
         case GenPolyType(tparams, MethodType(params, res)) => GenPolyType(tparams, MethodType(param :: params, res))
       }
-      methSym.removeAnnotation(mtrec)
+      methSym
+        .removeAnnotation(mtrec)
+        .setAnnotations(trec :: Nil)
       localTyper.namer.enterInScope(methSym)
     }
 
@@ -181,9 +183,8 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     //TODO: TypeApply here or above in transform?
     //TODO: remove debug prints
     def mkApply(root: Tree, tree: Tree): Tree = tree match{        
-      case Apply(fn: Apply, args) => System.out.println(show(args)); Apply(mkApply(root, fn), transformTrees(args))
-      case Apply(fn, args) => 
-        System.out.println(show(args));
+      case Apply(fn: Apply, args) => Apply(mkApply(root, fn), transformTrees(args))
+      case Apply(fn, args) =>
         val indxParam = localTyper.typed(Literal(Constant(symbols(fn.symbol))))
         Apply(gen.mkAttributedRef(root.symbol.owner.thisType, methSym), indxParam :: transformTrees(args))
     }

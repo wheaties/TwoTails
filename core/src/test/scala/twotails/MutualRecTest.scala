@@ -13,8 +13,8 @@ class Foo2{
 }
 
 class Bar{
-  @mutualrec def one(x: Int): Int = if(0 < x) two(x-1) else x
-  @mutualrec def two(x: Int): Int = if(0 < x) one(x-2) else x
+  @mutualrec final def one(x: Int): Int = if(0 < x) two(x-1) else x
+  @mutualrec final def two(x: Int): Int = if(0 < x) one(x-2) else x
 }
 
 class ErrBar{
@@ -28,20 +28,20 @@ class ErrBar{
 }*/
 
 class Bippy{
-  @mutualrec def one(x: Int, y: Int = 1): Int = if(0 < x) two(y, x) else 0
-  @mutualrec def two(x: Int, y: Int = 1): Int = if(0 < x) one(x-1, y-1) else 0
+  @mutualrec final def one(x: Int, y: Int = 1): Int = if(0 < x) two(y, x) else 0
+  @mutualrec final def two(x: Int, y: Int = 1): Int = if(0 < x) one(x-1, y-1) else 0
 }
 
 object Blappy{
-  @mutualrec def one(x: Int): Int = if(0 < x) two(x-1) else 0
-  @mutualrec def two(x: Int): Int = if(0 < x) one(x-2) else 0
+  @mutualrec final def one(x: Int): Int = if(0 < x) two(x-1) else 0
+  @mutualrec final def two(x: Int): Int = if(0 < x) one(x-2) else 0
 }
 
 class Nested{
   def thing(y: Int) ={
     class Yo{
-      @mutualrec def one(x: Int): Int = if(0 < x) two(x-1) else 0
-      @mutualrec def two(x: Int): Int = if(0 < x) one(x-2) else 0
+      @mutualrec final def one(x: Int): Int = if(0 < x) two(x-1) else 0
+      @mutualrec final def two(x: Int): Int = if(0 < x) one(x-2) else 0
     }
 
     (new Yo).two(y)
