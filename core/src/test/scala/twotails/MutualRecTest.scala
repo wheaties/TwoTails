@@ -101,9 +101,30 @@ class Nested{
     @mutualrec final def one(x: Int): Int = if(0 < x) two(x-1) else 0
     @mutualrec final def two(x: Int): Int = if(0 < x) one(x-2) else 0
   }
+
+  def something(y: Int): Int ={
+  	@mutualrec def one(x: Int): Int = if(0 < x) two(x-1) else 0
+    @mutualrec def two(x: Int): Int = if(0 < x) one(x-2) else 0
+
+    one(y)
+  }
+
+  { //just a block which will be discarded
+  	@mutualrec def one(x: Int): Int = if(0 < x) two(x-1) else 0
+    @mutualrec def two(x: Int): Int = if(0 < x) one(x-2) else 0
+  }
+
+  val that ={ xy: Int =>
+  	@mutualrec def one(x: Int): Int = if(0 < x) two(x-1) else 0
+    @mutualrec def two(x: Int): Int = if(0 < x) one(x-2) else 0
+
+    one(xy)
+  }
 }
 
 class ConstructionTest extends FlatSpec with Matchers{
+  val fourK = 400000
+
   "Two mutually recursive, single argument, annotated methods on an object" should "not throw a StackOverflow" in{
     Blappy.one(fourK) should equal (0)
   }
@@ -140,6 +161,10 @@ class Bahama[A]{
   @mutualrec final def two(x: A, y: Int): A = if(0 < y) one(x, y-1) else x
 }
 
+class KeyLargo{
+  @mutualrec final def thing[A](x: A, y: Int): A = if(0 < y) thing(x, y-1) else x
+}
+
 /*class Burmuda{
   @mutualrec final def one[A](x: A, y: Int): A = if(0 < y) two(x, y-1) else x
   @mutualrec final def two[A](x: A, y: Int): A = if(0 < y) one(x, y-1) else x
@@ -152,6 +177,12 @@ class TypeParamtersTest extends FlatSpec with Matchers{
     val fiji = new Fiji[Int]
 
     fiji.thing(1, fourK) should equal (1)
+  }
+
+  "A single argument, annotated method with a type parameter" should "be equivalent to a tailrec" in{
+  	val largo = new KeyLargo
+
+  	largo.thing(1, fourK) should equal (1)
   }
 
   "Two mutually recursive, single argument, annotated methods of a class with a type parameter" should "not throw a StackOverflow" in{

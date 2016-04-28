@@ -43,8 +43,15 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     override def transform(tree: Tree): Tree = super.transform{
       curTree = tree
       tree match{
-        case cd @ ClassDef(mods, name, tparams, body) => treeCopy.ClassDef(cd, mods, name, tparams, transformBody(tree, body))
-        case md @ ModuleDef(mods, name, body) => treeCopy.ModuleDef(md, mods, name, transformBody(tree, body))
+        case cd @ ClassDef(mods, name, tparams, body) =>
+          val trans = transformBody(tree, body)
+          if(trans != body) treeCopy.ClassDef(cd, mods, name, tparams, trans) else cd
+        case md @ ModuleDef(mods, name, body) =>
+          val trans = transformBody(tree, body)
+          if(trans != body) treeCopy.ModuleDef(md, mods, name, trans) else md
+        case bl @ Block(stats, expr) if expr != EmptyTree =>
+          val trans = transformNested(tree, stats)
+          if(stats != trans) treeCopy.Block(bl, trans, expr) else bl
         case _ => tree
       }
     }
@@ -64,14 +71,30 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       }
     }
 
+    def transformNested(root: Tree, stats: List[Tree]): List[Tree] ={
+      val cnt = stats.count{
+        case ddef: DefDef => hasMutualRec(ddef)
+        case _ => false
+      }
+
+      (cnt: @switch) match{
+        case 0 => stats
+        case 1 => convertTailRec(stats); stats
+        case _ => convertMutualRec(root, stats)
+      }
+    }
+
     private final val mtrec: Symbol = rootMirror.getRequiredClass("twotails.mutualrec")
     private final val trec = AnnotationInfo(definitions.TailrecClass.tpe, Nil, Nil)
 
-    def hasMutualRec(ddef: DefDef) = ddef.symbol.annotations.exists(_.tpe.typeSymbol == mtrec)
+    def hasMutualRec(tree: Tree) = 
+      (tree.symbol != NoSymbol) &&
+      tree.symbol.annotations.exists(_.tpe.typeSymbol == mtrec)
 
     //In case there's just one, convert to a @tailrec. No reason to add a whole new method.
     def convertTailRec(body: List[Tree]): Unit = body.foreach{
       case ddef: DefDef if hasMutualRec(ddef) => 
+        //if(!ddef.symbol.isEffectivelyFinalOrNotOverridden) unit.
         ddef.symbol
           .removeAnnotation(mtrec)
           .setAnnotations(trec :: Nil)
@@ -148,8 +171,11 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       q"(indx: @scala.annotation.switch) match{ case ..$cases }"
     }
 
-    def mkNewMethodTree(methSym: Symbol, tree: Tree, rhs: Tree): Tree ={
+    def mkNewMethodTree(methSym: Symbol, tree: Tree, rhs: Tree): Tree = if(tree.symbol != null){
       localTyper.typedPos(tree.symbol.pos)(DefDef(methSym, rhs))
+    }
+    else{
+      localTyper.typed(DefDef(methSym, rhs))
     }
 
     def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
@@ -166,6 +192,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
   }
 
   class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Int], unit: CompilationUnit) extends TypingTransformer(unit){
+    //TODO: TypeApply
     override def transform(tree: Tree): Tree = tree match{
       case root: Apply if containsSym(tree) => mkApply(root, tree)
       /*case q"fn(...exprss)" if symbols.contains(fn.symbol) => 
@@ -176,7 +203,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       case _ => super.transform(tree)
     }
 
-    //TODO: TypeApply
     @tailrec final def containsSym(tree: Tree): Boolean = tree match{
       case Apply(ap: Apply, _) => containsSym(ap)
       case Apply(fn, _) => symbols.contains(fn.symbol)
