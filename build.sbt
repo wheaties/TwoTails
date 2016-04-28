@@ -8,7 +8,7 @@ lazy val root = (project in file(".")).settings(
 )
 .aggregate(tails)
 
-lazy val tails = build("core", "core").settings(
+lazy val tails = build("twotails", "core").settings(
   libraryDependencies ++= Seq(
     "org.scala-lang" % "scala-compiler" % scalaVersion.value % "provided"
   )

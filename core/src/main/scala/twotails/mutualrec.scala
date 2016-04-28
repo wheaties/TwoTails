@@ -138,6 +138,8 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       val defrhs = defdef.map{ tree =>
         val DefDef(_, _, _, vparams, _, rhs) = tree
 
+        //shamelessly taken from @retronym's example #20 of the Scalac survival guide.
+        //I have no idea what a skolem is or represents.
         val origTparams = tree.symbol.info.typeParams
         val (oldSkolems, deskolemized) = if(origTparams.isEmpty) (Nil, Nil) else{
           val skolemSubst = MMap.empty[Symbol, Symbol]
@@ -160,7 +162,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         val replacedRhs = callTransformer.transform(rhs)
 
         super.transform(replacedRhs)
-          .changeOwner((tree.symbol, methSym))
+          .changeOwner(tree.symbol -> methSym)
           .substituteSymbols(old, neww)
       }
 
@@ -210,6 +212,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
 
     //TODO: TypeApply here or above in transform?
+    //TODO: Figure out multiple argument blocks fn(...)(...)
     def mkApply(root: Tree, tree: Tree): Tree = tree match{        
       case Apply(fn: Apply, args) => treeCopy.Apply(tree, mkApply(root, fn), transformTrees(args))
       case Apply(fn, args) =>
