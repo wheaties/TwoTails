@@ -32,9 +32,14 @@ class Bippy{
   @mutualrec final def two(x: Int, y: Int = 2): Int = if(0 < x) one(x-1) else y
 }*/
 
+/*class Bazzar{
+  @mutualrec def one(x: Int)(y: Int): Int = two(x)(y)
+  @mutualrec def two(x: Int)(y: Int): Int = one(x)(y)
+}*/
+
 /*class Baz{
-  @mutualrec def one(x: Int)(y: Int): Int = if(x < 0) two(y)(x) else 0
-  @mutualrec def two(x: Int)(y: Int): Int = if(x < 0) one(x-1)(y-1) else 0
+  @mutualrec def one(x: Int)(y: Int): Int = if(0 < x) two(y)(x) else 0
+  @mutualrec def two(x: Int)(y: Int): Int = if(0 < x) one(x-1)(y-1) else 0
 }*/
 
 class ArgumentListTest extends FlatSpec with Matchers{

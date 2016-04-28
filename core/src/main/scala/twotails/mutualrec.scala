@@ -139,7 +139,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         val DefDef(_, _, _, vparams, _, rhs) = tree
 
         //shamelessly taken from @retronym's example #20 of the Scalac survival guide.
-        //I have no idea what a skolem is or represents.
         val origTparams = tree.symbol.info.typeParams
         val (oldSkolems, deskolemized) = if(origTparams.isEmpty) (Nil, Nil) else{
           val skolemSubst = MMap.empty[Symbol, Symbol]
@@ -159,9 +158,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         val old = oldSkolems ::: tree.symbol.typeParams ::: vparams.flatMap(_.map(_.symbol))
         val neww = deskolemized ::: methSym.typeParams ::: methSym.info.paramss.flatten.drop(1)
 
-        val replacedRhs = callTransformer.transform(rhs)
-
-        super.transform(replacedRhs)
+        callTransformer.transform(rhs)
           .changeOwner(tree.symbol -> methSym)
           .substituteSymbols(old, neww)
       }
@@ -184,7 +181,8 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
   	  case (tree, indx) =>
         val DefDef(mods, _, _, vparams @ (vp :: vps), _, _) = tree
         val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
-        val forwarderTree = (Apply(gen.mkAttributedRef(tree.symbol.owner.thisType, methSym), newVp) /: vps){ 
+        val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
+        val forwarderTree = (Apply(refTree, newVp) /: vps){ 
           (fn, params) => Apply(fn, params map gen.paramToArg)
         }
         val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
@@ -194,30 +192,37 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
   }
 
   class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Int], unit: CompilationUnit) extends TypingTransformer(unit){
-    //TODO: TypeApply
+    //TODO: Figure out multiple argument blocks fn(...)(...)
+    //TODO: FIgure out type parameters
     override def transform(tree: Tree): Tree = tree match{
-      case root: Apply if containsSym(tree) => mkApply(root, tree)
-      /*case q"fn(...exprss)" if symbols.contains(fn.symbol) => 
+      case Apply(fn, args) if symbols.contains(fn.symbol) =>
         val indxParam = localTyper.typed(Literal(Constant(symbols(fn.symbol))))
-        val ref = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
-        val args = exprss.map(transformTrees)
-        q"$ref(...$args)"*/
+        args.foreach{ arg =>
+          if(arg.symbol.owner == tree.symbol) arg.changeOwner(tree.symbol -> methSym)
+        }
+        val debugFn = multiArgs(fn) //included just for debugging purposes.
+        treeCopy.Apply(tree, debugFn, indxParam :: transformTrees(args))
       case _ => super.transform(tree)
     }
 
-    @tailrec final def containsSym(tree: Tree): Boolean = tree match{
-      case Apply(ap: Apply, _) => containsSym(ap)
-      case Apply(fn, _) => symbols.contains(fn.symbol)
-      case _ => symbols.contains(tree.symbol)
-    }
-
-    //TODO: TypeApply here or above in transform?
-    //TODO: Figure out multiple argument blocks fn(...)(...)
-    def mkApply(root: Tree, tree: Tree): Tree = tree match{        
-      case Apply(fn: Apply, args) => treeCopy.Apply(tree, mkApply(root, fn), transformTrees(args))
-      case Apply(fn, args) =>
-        val indxParam = localTyper.typed(Literal(Constant(symbols(fn.symbol))))
-        treeCopy.Apply(tree, gen.mkAttributedRef(root.symbol.owner.thisType, methSym), indxParam :: transformTrees(args))
+    def multiArgs(tree: Tree): Tree = tree match{
+      case Apply(fn, args) => 
+        args.foreach{ arg =>
+          if(arg.symbol.owner == tree.symbol) arg.changeOwner(tree.symbol -> methSym)
+        }
+        treeCopy.Apply(tree, multiArgs(fn), transformTrees(args))
+      case TypeApply(fn, targs) => 
+        targs.foreach{ arg =>
+          if(arg.symbol.owner == tree.symbol) arg.changeOwner(tree.symbol -> methSym)
+        }
+        treeCopy.TypeApply(tree, multiArgs(fn), targs)
+      case _ => gen.mkAttributedRef(methSym)
     }
   }
 }
+
+/*
+remote debugging is as simple as
+
+sbt test:compile -jvm-debug 5005
+*/

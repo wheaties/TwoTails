@@ -29,5 +29,6 @@ There are a number of caveats when working with the plugin at the moment
  * The plugin does not currently support multiple parameter lists, i.e. `fn(x: Int)(y: Int): Int`.
  * The plugin does not support type parameters on the functions themselves, although type parameters are permitted on class or enclosing function definitions, i.e. `fn[A](x: A): A` is not supported.
  * As mentioned above, only has been tested and compiled against Scala 2.11
+ * It does not handle method [size limits](http://stackoverflow.com/questions/17422480/maximum-size-of-a-method-in-java-7-and-8) yet
 
 Stay tuned as this is a work in progress. That is, it's pre-alpha quality and should not go into production code!

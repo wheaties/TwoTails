@@ -16,9 +16,19 @@ class KeyLargo{
   @mutualrec final def thing[A](x: A, y: Int): A = if(0 < y) thing(x, y-1) else x
 }
 
-/*class Burmuda{
+class Burmuda{
   @mutualrec final def one[A](x: A, y: Int): A = if(0 < y) two(x, y-1) else x
   @mutualrec final def two[A](x: A, y: Int): A = if(0 < y) one(x, y-1) else x
+}
+
+/*class Montego[A]{
+  @mutualrec final def one[B](x: A, y: B, z: Int): (A, B) = if(0 < z) two(x, y, z-1) else (x, y)
+  @mutualrec final def two[B](x: A, y: B, z: Int): (A, B) = if(0 < z) one(x, y, z-1) else (x, y)
+}*/
+
+/*class Siracha{
+  @mutualrec final def one[A](x: A)(y: Int): A = if(0 < y) two(x)(y-1) else x
+  @mutualrec final def two[A](x: A)(y: Int): A = if(0 < y) one(x)(y-1) else x
 }*/
 
 class TypeParamtersTest extends FlatSpec with Matchers{
@@ -41,4 +51,10 @@ class TypeParamtersTest extends FlatSpec with Matchers{
 
     b.one("one", fourK) should equal ("one")
   }
+
+  /*"Two mutually recursive, annotated methods with a type parameter" should "not throw a StackOverflow" in{
+    val b = new Burmuda
+
+    b.one("yo", 7) should equal ("yo")
+  }*/
 }
