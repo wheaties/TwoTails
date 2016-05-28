@@ -26,6 +26,12 @@ class Burmuda{
   @mutualrec final def two[B](x: A, y: B, z: Int): (A, B) = if(0 < z) one(x, y, z-1) else (x, y)
 }*/
 
+/*class Cayman{
+  @mutualrec final def one[A : Numeric](x: A, y: Int): A = if(0 < y) two(x, y-1) else x
+  @mutualrec final def two[A : Numeric](x: A, y: Int): A = if(0 < y) one(x, y-1) else x
+}
+*/
+
 /*class Siracha{
   @mutualrec final def one[A](x: A)(y: Int): A = if(0 < y) two(x)(y-1) else x
   @mutualrec final def two[A](x: A)(y: Int): A = if(0 < y) one(x)(y-1) else x
@@ -34,7 +40,7 @@ class Burmuda{
 class TypeParamtersTest extends FlatSpec with Matchers{
   val fourK = 400000
 
-  "A single argument, annotated method of a class with a type paramter" should "be equivalent to a tailrec" in{
+  "A single argument, annotated method of a class with a type parameter" should "be equivalent to a tailrec" in{
     val fiji = new Fiji[Int]
 
     fiji.thing(1, fourK) should equal (1)

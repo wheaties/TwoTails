@@ -10,7 +10,7 @@ object TwoTails{
     settings = sonatypeSettings ++
       Seq(
         scalaVersion := "2.11.8",
-        crossScalaVersions := Seq("2.11.8"),
+        crossScalaVersions := Seq("2.11.8", "2.12.0-M4"),
         name := pjName,
         organization := "com.github.wheaties",
         scalacOptions := Seq(

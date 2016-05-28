@@ -6,6 +6,7 @@ import scala.tools.nsc.plugins.{Plugin, PluginComponent}
 import scala.tools.nsc.symtab.Flags._
 import scala.tools.nsc.transform.{Transform, TypingTransformers}
 import collection.mutable.{Map => MMap}
+import collection.breakOut
 
 @compileTimeOnly("Somehow this didn't get processed as part of the compilation.")
 final class mutualrec extends StaticAnnotation
@@ -16,7 +17,6 @@ class TwoTailsPlugin(val global: Global) extends Plugin{
   val components = List[PluginComponent](new MutualRecComponent(this, global))
 }
 
-//TODO: In the future can consider mutualrec from within a def but for now only objects, traits and classes.
 //TODO: must require that them mutualrec methods are "final"
 class MutualRecComponent(val plugin: Plugin, val global: Global) 
     extends PluginComponent with Transform with TypingTransformers {//with TreeDSL{
@@ -41,7 +41,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
 
     override def transform(tree: Tree): Tree = super.transform{
-      curTree = tree
       tree match{
         case cd @ ClassDef(mods, name, tparams, body) =>
           val trans = transformBody(tree, body)
@@ -133,8 +132,10 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
 
     def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree ={
-      val defSymbols = defdef.map(_.symbol).zipWithIndex.toMap
-      val callTransformer = new MutualCallTransformer(methSym, defSymbols, unit)
+      val defSymbols: Map[Symbol, Tree] = defdef.zipWithIndex.map{
+        case (d, i) => (d.symbol, localTyper.typed(Literal(Constant(i))))
+      }(breakOut)
+      val callTransformer = new MutualCallTransformer(methSym, defSymbols)
       val defrhs = defdef.map{ tree =>
         val DefDef(_, _, _, vparams, _, rhs) = tree
 
@@ -167,7 +168,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         case (body, i) => cq"$i => $body"
       }
 
-      q"(indx: @scala.annotation.switch) match{ case ..$cases }"
+      super.transform(q"(indx: @scala.annotation.switch) match{ case ..$cases }")
     }
 
     def mkNewMethodTree(methSym: Symbol, tree: Tree, rhs: Tree): Tree = if(tree.symbol != null){
@@ -182,8 +183,8 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         val DefDef(mods, _, _, vparams @ (vp :: vps), _, _) = tree
         val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
         val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
-        val forwarderTree = (Apply(refTree, newVp) /: vps){ 
-          (fn, params) => Apply(fn, params map gen.paramToArg)
+        val forwarderTree = (Apply(refTree, newVp) /: vps){
+          (fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
         }
         val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
         forwarded.symbol.removeAnnotation(mtrec)
@@ -191,31 +192,20 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
   }
 
-  class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Int], unit: CompilationUnit) extends TypingTransformer(unit){
-    //TODO: Figure out multiple argument blocks fn(...)(...)
+  class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Tree]) extends Transformer{
     //TODO: FIgure out type parameters
     override def transform(tree: Tree): Tree = tree match{
-      case Apply(fn, args) if symbols.contains(fn.symbol) =>
-        val indxParam = localTyper.typed(Literal(Constant(symbols(fn.symbol))))
-        args.foreach{ arg =>
-          if(arg.symbol.owner == tree.symbol) arg.changeOwner(tree.symbol -> methSym)
-        }
-        val debugFn = multiArgs(fn) //included just for debugging purposes.
-        treeCopy.Apply(tree, debugFn, indxParam :: transformTrees(args))
+      case Apply(fn, args) if symbols.contains(fn.symbol) => multiArgs(tree) 
       case _ => super.transform(tree)
     }
 
-    def multiArgs(tree: Tree): Tree = tree match{
+    def multiArgs(tree: Tree):Tree = tree match{
       case Apply(fn, args) => 
-        args.foreach{ arg =>
-          if(arg.symbol.owner == tree.symbol) arg.changeOwner(tree.symbol -> methSym)
+        multiArgs(fn) match{
+          case f @ Apply(_, _) => treeCopy.Apply(tree, f, transformTrees(args))
+          case f => treeCopy.Apply(tree, f, symbols(fn.symbol) :: transformTrees(args))
         }
-        treeCopy.Apply(tree, multiArgs(fn), transformTrees(args))
-      case TypeApply(fn, targs) => 
-        targs.foreach{ arg =>
-          if(arg.symbol.owner == tree.symbol) arg.changeOwner(tree.symbol -> methSym)
-        }
-        treeCopy.TypeApply(tree, multiArgs(fn), targs)
+      case TypeApply(fn, targs) => treeCopy.TypeApply(tree, multiArgs(fn), targs)
       case _ => gen.mkAttributedRef(methSym)
     }
   }

@@ -88,4 +88,10 @@ class NestedTest extends FlatSpec with Matchers{
 
   	foo.one(fourK) should equal (0)
   }
+
+  "A nested set of annotated methods with a name clashing nested block" should "not throw a StackOverflow" in{
+    val nest = new Nested
+
+    nest.dis(fourK) should equal(0)
+  }
 }

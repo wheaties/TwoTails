@@ -27,20 +27,21 @@ class Bippy{
   @mutualrec final def two(x: Int, y: Int = 1): Int = if(0 < x) one(x-1, y-1) else 0
 }
 
-/*class Bumpy{
+/*//TODO: This should be another file and set of tests. Think about moving Bippy
+class Bumpy{
   @mutualrec final def one(x: Int, y: Int = 1): Int = if(0 < x) two(x-1) else y
   @mutualrec final def two(x: Int, y: Int = 2): Int = if(0 < x) one(x-1) else y
 }*/
 
-/*class Bazzar{
-  @mutualrec def one(x: Int)(y: Int): Int = two(x)(y)
-  @mutualrec def two(x: Int)(y: Int): Int = one(x)(y)
-}*/
-
-/*class Baz{
+class Baz{
   @mutualrec def one(x: Int)(y: Int): Int = if(0 < x) two(y)(x) else 0
   @mutualrec def two(x: Int)(y: Int): Int = if(0 < x) one(x-1)(y-1) else 0
-}*/
+}
+
+class Bazooka{
+  @mutualrec def one(x: Int)(y: Int)(z: Int): Int = if(0 < x) two(y)(x)(z) else z
+  @mutualrec def two(x: Int)(y: Int)(z: Int): Int = if(0 < x) one(x-1)(y-1)(z+1) else z
+}
 
 class ArgumentListTest extends FlatSpec with Matchers{
   val seventyK = 70000
@@ -69,31 +70,15 @@ class ArgumentListTest extends FlatSpec with Matchers{
     }
   }
 
-  "Two mutually recursive, multi-argument, annotated methods" should "not throw a StackOverflow" in{
-  	val c = new Bippy
+  "Two mutually recursive, double-argument list, annotated methods" should "not throw a StackOverflow" in{
+  	val c = new Baz
 
-  	c.one(fourK, fourK) should equal (0)
-  }
-}
-
-object Blappy{
-  @mutualrec final def one(x: Int): Int = if(0 < x) two(x-1) else 0
-  @mutualrec final def two(x: Int): Int = if(0 < x) one(x-2) else 0
-
-  final def three(x: Int): Int = if(0 < x) four(x-1) else 0
-  final def four(x: Int): Int = if(0 < x) three(x-1) else 0
-}
-
-class ObjectTests extends FlatSpec with Matchers{
-  val fourK = 400000
-
-  "Two mutually recursive, single argument, annotated methods on an object" should "not throw a StackOverflow" in{
-    Blappy.one(fourK) should equal (0)
+  	c.one(fourK)(fourK) should equal (0)
   }
 
-  "Two mutually recursive, single argument but not annotated methods on an object" should "throw a StackOverflow" in{
-    intercept[StackOverflowError]{
-      Blappy.three(fourK)
-    }
+  "Two mutually recursive, multi-argument list, annotated methods" should "not throw a StackOverflow" in{
+    val baz = new Bazooka
+
+    baz.one(fourK)(fourK)(0) should equal (fourK)
   }
 }
