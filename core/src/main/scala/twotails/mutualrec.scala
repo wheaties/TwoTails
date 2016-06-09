@@ -193,9 +193,11 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
   }
 
   class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Tree]) extends Transformer{
+    val ref = gen.mkAttributedRef(methSym)
+
     //TODO: FIgure out type parameters
     override def transform(tree: Tree): Tree = tree match{
-      case Apply(fn, args) if symbols.contains(fn.symbol) => multiArgs(tree) 
+      case Apply(fn, _) if symbols.contains(fn.symbol) => multiArgs(tree)
       case _ => super.transform(tree)
     }
 
@@ -205,8 +207,8 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
           case f @ Apply(_, _) => treeCopy.Apply(tree, f, transformTrees(args))
           case f => treeCopy.Apply(tree, f, symbols(fn.symbol) :: transformTrees(args))
         }
-      case TypeApply(fn, targs) => treeCopy.TypeApply(tree, multiArgs(fn), targs)
-      case _ => gen.mkAttributedRef(methSym)
+      case TypeApply(fn, targs) => treeCopy.TypeApply(tree, ref, targs)
+      case _ => ref
     }
   }
 }

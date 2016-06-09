@@ -27,12 +27,6 @@ class Bippy{
   @mutualrec final def two(x: Int, y: Int = 1): Int = if(0 < x) one(x-1, y-1) else 0
 }
 
-/*//TODO: This should be another file and set of tests. Think about moving Bippy
-class Bumpy{
-  @mutualrec final def one(x: Int, y: Int = 1): Int = if(0 < x) two(x-1) else y
-  @mutualrec final def two(x: Int, y: Int = 2): Int = if(0 < x) one(x-1) else y
-}*/
-
 class Baz{
   @mutualrec def one(x: Int)(y: Int): Int = if(0 < x) two(y)(x) else 0
   @mutualrec def two(x: Int)(y: Int): Int = if(0 < x) one(x-1)(y-1) else 0
