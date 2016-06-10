@@ -19,11 +19,11 @@ class TwoTailsPlugin(val global: Global) extends Plugin{
 
 //TODO: must require that them mutualrec methods are "final"
 class MutualRecComponent(val plugin: Plugin, val global: Global) 
-    extends PluginComponent with Transform with TypingTransformers {//with TreeDSL{
+    extends PluginComponent with Transform with TypingTransformers {
   import global._
 
   val phaseName = "twotails"
-  override val runsBefore = List("tailcalls", "patmat") //must occur before the tailcalls phase and pattern matcher
+  override val runsBefore = List("tailcalls", "patmat")
   val runsAfter = List("typer")
   override val requires = List("typer")
 
@@ -93,7 +93,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     //In case there's just one, convert to a @tailrec. No reason to add a whole new method.
     def convertTailRec(body: List[Tree]): Unit = body.foreach{
       case ddef: DefDef if hasMutualRec(ddef) => 
-        //if(!ddef.symbol.isEffectivelyFinalOrNotOverridden) unit.
         ddef.symbol
           .removeAnnotation(mtrec)
           .setAnnotations(trec :: Nil)
@@ -106,8 +105,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         case _ => false
       }
 
-      //Right here making the assumption that every method that's mutualrec has both the same named arguments
-      //with potentially the same default arguments. Will need to handle that in the future as a TODO.
       val methSym = mkNewMethodSymbol(head.symbol)
       val rhs = mkNewMethodRhs(methSym, head :: tail)
       val methTree = mkNewMethodTree(methSym, root, rhs)
