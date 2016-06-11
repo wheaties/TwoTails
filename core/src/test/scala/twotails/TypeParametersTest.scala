@@ -16,26 +16,25 @@ class KeyLargo{
   @mutualrec final def thing[A](x: A, y: Int): A = if(0 < y) thing(x, y-1) else x
 }
 
-/*class Burmuda{
+class Burmuda{
   @mutualrec final def one[A](x: A, y: Int): A = if(0 < y) two(x, y-1) else x
   @mutualrec final def two[A](x: A, y: Int): A = if(0 < y) one(x, y-1) else x
-}*/
+}
 
-/*class Montego[A]{
+class Montego[A]{
   @mutualrec final def one[B](x: A, y: B, z: Int): (A, B) = if(0 < z) two(x, y, z-1) else (x, y)
   @mutualrec final def two[B](x: A, y: B, z: Int): (A, B) = if(0 < z) one(x, y, z-1) else (x, y)
-}*/
+}
 
-/*class Cayman{
+class Cayman{
   @mutualrec final def one[A : Numeric](x: A, y: Int): A = if(0 < y) two(x, y-1) else x
   @mutualrec final def two[A : Numeric](x: A, y: Int): A = if(0 < y) one(x, y-1) else x
 }
-*/
 
-/*class Siracha{
+class Aruba{
   @mutualrec final def one[A](x: A)(y: Int): A = if(0 < y) two(x)(y-1) else x
   @mutualrec final def two[A](x: A)(y: Int): A = if(0 < y) one(x)(y-1) else x
-}*/
+}
 
 class TypeParamtersTest extends FlatSpec with Matchers{
   val fourK = 400000
@@ -58,9 +57,27 @@ class TypeParamtersTest extends FlatSpec with Matchers{
     b.one("one", fourK) should equal ("one")
   }
 
-  /*"Two mutually recursive, annotated methods with a type parameter" should "not throw a StackOverflow" in{
+  "Two mutually recursive, annotated methods with a type parameter" should "not throw a StackOverflow" in{
     val b = new Burmuda
 
     b.one("yo", 7) should equal ("yo")
-  }*/
+  }
+
+  "Two mutually recursive methods with both class and method type parameters" should "not throw a StackOverflow" in{
+    val m = new Montego[Int]
+
+    m.one(1, 'a', fourK) should equal (1 -> 'a')
+  }
+
+  "Two mutually recursive methods with type parameters and type constraints" should "not throw a StackOverflow" in{
+    val c = new Cayman
+
+    c.one(1, fourK) should equal (1)
+  }
+
+  "Two mutually recursive, multi-argument list methods with type parameters" should "not throw a StackOverflow" in{
+    val a = new Aruba
+
+    a.one('a')(fourK) should equal ('a')
+  }
 }
