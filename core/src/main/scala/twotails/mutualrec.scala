@@ -8,7 +8,7 @@ import scala.tools.nsc.transform.{Transform, TypingTransformers}
 import collection.mutable.{Map => MMap}
 import collection.breakOut
 
-@compileTimeOnly("Somehow this didn't get processed as part of the compilation.")
+@compileTimeOnly("Unable to tail call optimize as this either not effectively final or a method.")
 final class mutualrec extends StaticAnnotation
 
 class TwoTailsPlugin(val global: Global) extends Plugin{
@@ -177,7 +177,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
     def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
   	  case (tree, indx) =>
-        val DefDef(mods, _, _, vparams @ (vp :: vps), _, _) = tree
+        val DefDef(mods, _, _, vp :: vps, _, _) = tree
         val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
         val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
         val forwarderTree = (Apply(refTree, newVp) /: vps){
@@ -204,14 +204,11 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
           case f @ Apply(_, _) => treeCopy.Apply(tree, f, transformTrees(args))
           case f => treeCopy.Apply(tree, f, symbols(fn.symbol) :: transformTrees(args))
         }
-      case TypeApply(fn, targs) => treeCopy.TypeApply(tree, ref, targs)
+      case TypeApply(fn, targs) => 
+        val out = treeCopy.TypeApply(tree, ref, targs)
+        out.setType(ref.tpe)
+        out
       case _ => ref
     }
   }
 }
-
-/*
-remote debugging is as simple as
-
-sbt test:compile -jvm-debug 5005
-*/
