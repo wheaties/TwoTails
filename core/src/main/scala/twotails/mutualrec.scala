@@ -8,7 +8,7 @@ import scala.tools.nsc.transform.{Transform, TypingTransformers}
 import collection.mutable.{Map => MMap}
 import collection.breakOut
 
-@compileTimeOnly("Unable to tail call optimize as this either not effectively final or a method.")
+@compileTimeOnly("Unable to tail call optimize as this is either not effectively final or a non-constructor method.")
 final class mutualrec extends StaticAnnotation
 
 class TwoTailsPlugin(val global: Global) extends Plugin{
@@ -177,14 +177,14 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
     def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
   	  case (tree, indx) =>
-        val DefDef(mods, _, _, vp :: vps, _, _) = tree
+        val DefDef(_, _, _, vp :: vps, _, _) = tree
         val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
         val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
         val forwarderTree = (Apply(refTree, newVp) /: vps){
           (fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
         }
         val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
-        forwarded.symbol.removeAnnotation(mtrec)
+        if(tree.symbol.isEffectivelyFinalOrNotOverridden) forwarded.symbol.removeAnnotation(mtrec)
         forwarded
     }
   }
@@ -192,7 +192,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
   class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Tree]) extends Transformer{
     val ref = gen.mkAttributedRef(methSym)
 
-    //TODO: FIgure out type parameters
     override def transform(tree: Tree): Tree = tree match{
       case Apply(fn, _) if symbols.contains(fn.symbol) => multiArgs(tree)
       case _ => super.transform(tree)
