@@ -17,7 +17,6 @@ class TwoTailsPlugin(val global: Global) extends Plugin{
   val components = List[PluginComponent](new MutualRecComponent(this, global))
 }
 
-//TODO: must require that them mutualrec methods are "final"
 class MutualRecComponent(val plugin: Plugin, val global: Global) 
     extends PluginComponent with Transform with TypingTransformers {
   import global._

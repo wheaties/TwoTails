@@ -27,9 +27,7 @@ object TwoTails{
           "-Xprint-types",
           "-Xlog-reflective-calls",
           "-Xprint:twotails",
-          "-Ylog:twotails"//,
-          //"-Xprint:patmat",
-          //"-Xprint:tailcalls"
+          "-Ylog:twotails"
         ),
         libraryDependencies ++= Seq(
           "org.scalatest" %% "scalatest" % "2.2.6" % "test"

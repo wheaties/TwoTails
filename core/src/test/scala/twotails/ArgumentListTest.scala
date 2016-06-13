@@ -28,13 +28,13 @@ class Bippy{
 }
 
 class Baz{
-  @mutualrec def one(x: Int)(y: Int): Int = if(0 < x) two(y)(x) else 0
-  @mutualrec def two(x: Int)(y: Int): Int = if(0 < x) one(x-1)(y-1) else 0
+  @mutualrec final def one(x: Int)(y: Int): Int = if(0 < x) two(y)(x) else 0
+  @mutualrec final def two(x: Int)(y: Int): Int = if(0 < x) one(x-1)(y-1) else 0
 }
 
 class Bazooka{
-  @mutualrec def one(x: Int)(y: Int)(z: Int): Int = if(0 < x) two(y)(x)(z) else z
-  @mutualrec def two(x: Int)(y: Int)(z: Int): Int = if(0 < x) one(x-1)(y-1)(z+1) else z
+  @mutualrec final def one(x: Int)(y: Int)(z: Int): Int = if(0 < x) two(y)(x)(z) else z
+  @mutualrec final def two(x: Int)(y: Int)(z: Int): Int = if(0 < x) one(x-1)(y-1)(z+1) else z
 }
 
 class ArgumentListTest extends FlatSpec with Matchers{
