@@ -6,10 +6,24 @@ lazy val root = (project in file(".")).settings(
   scalaVersion := "2.11.8",
   publishArtifact := false
 )
-.aggregate(tails)
+.aggregate(plugin, lib)
 
-lazy val tails = build("twotails", "core").settings(
+lazy val plugin = build("twotails", "core").settings(
   libraryDependencies ++= Seq(
     "org.scala-lang" % "scala-compiler" % scalaVersion.value % "provided"
+  ),
+  scalacOptions in Test ++= Seq(
+    "-Xplugin:" + (packageBin in Compile).value,
+    "-verbose",
+    "-Xprint-types",
+    "-Xlog-reflective-calls",
+    "-Xprint:twotails",
+    "-Ylog:twotails"
+  ),
+  libraryDependencies ++= Seq(
+    "org.scalatest" %% "scalatest" % "2.2.6" % "test"
   )
 )
+.dependsOn(lib)
+
+lazy val lib = build("twotails-annotations", "annotations")

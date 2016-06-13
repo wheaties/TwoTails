@@ -1,15 +1,12 @@
 package twotails
 
-import scala.annotation.{StaticAnnotation, compileTimeOnly, switch, tailrec}
+import scala.annotation.{switch, tailrec}
 import scala.tools.nsc.{Global, Phase}
 import scala.tools.nsc.plugins.{Plugin, PluginComponent}
 import scala.tools.nsc.symtab.Flags._
 import scala.tools.nsc.transform.{Transform, TypingTransformers}
 import collection.mutable.{Map => MMap}
 import collection.breakOut
-
-@compileTimeOnly("Unable to tail call optimize as this is either not effectively final or a non-constructor method.")
-final class mutualrec extends StaticAnnotation
 
 class TwoTailsPlugin(val global: Global) extends Plugin{
   val name = "twotails"

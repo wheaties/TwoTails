@@ -20,17 +20,7 @@ object TwoTails{
           "-language:higherKinds",
           "-language:existentials",
           "-unchecked",
-          "-Xfuture"),
-        scalacOptions in Test ++= Seq(
-          "-Xplugin:" + (packageBin in Compile).value,
-          "-verbose",
-          "-Xprint-types",
-          "-Xlog-reflective-calls",
-          "-Xprint:twotails",
-          "-Ylog:twotails"
-        ),
-        libraryDependencies ++= Seq(
-          "org.scalatest" %% "scalatest" % "2.2.6" % "test"
+          "-Xfuture"
         ),
         pomExtra := pom,
         publishTo <<= version { v: String =>
@@ -40,7 +30,7 @@ object TwoTails{
           else
             Some("releases" at nexus + "service/local/staging/deploy/maven2")
         },
-        credentials += Credentials(Path.userHome / ".ivy2" / ".credentials"),
+        credentials += Credentials(Path.userHome / ".ivy2" / "credentials/sonatype"),
         pomIncludeRepository := { x => false },
         publishMavenStyle := true,
         publishArtifact in Test := false,
