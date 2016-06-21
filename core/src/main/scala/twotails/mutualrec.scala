@@ -5,7 +5,7 @@ import scala.tools.nsc.{Global, Phase}
 import scala.tools.nsc.plugins.{Plugin, PluginComponent}
 import scala.tools.nsc.symtab.Flags._
 import scala.tools.nsc.transform.{Transform, TypingTransformers}
-import collection.mutable.{Map => MMap}
+import collection.mutable.{Map => MMap, Set => MSet}
 import collection.breakOut
 
 class TwoTailsPlugin(val global: Global) extends Plugin{
@@ -96,21 +96,32 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
 
     def convertMutualRec(root: Tree, body: List[Tree]): List[Tree] ={
-      val (head :: tail, everythingElse) = body.partition{
+      val (recs, everythingElse) = body.partition{
         case ddef: DefDef => hasMutualRec(ddef)
         case _ => false
       }
 
-      val methSym = mkNewMethodSymbol(head.symbol)
-      val rhs = mkNewMethodRhs(methSym, head :: tail)
-      val methTree = mkNewMethodTree(methSym, root, rhs)
-      val forwardedTrees = forwardTrees(methSym, head :: tail)
+      var tndx = 0
+      val optimized = CyclicComponents(recs) flatMap {
+        case Nil => Nil //TODO: need helpful error here
+        case head :: Nil => head.symbol
+          .removeAnnotation(mtrec)
+          .setAnnotations(trec :: Nil)
+          head :: Nil
+        case head :: tail => 
+          val methSym = mkNewMethodSymbol(head.symbol, TermName("mutualrec_fn$" + tndx))
+          val rhs = mkNewMethodRhs(methSym, head :: tail)
+          val methTree = mkNewMethodTree(methSym, root, rhs)
+          val forwardedTrees = forwardTrees(methSym, head :: tail)
+          tndx += 1
+          methTree :: forwardedTrees
+      }
 
-      Block(everythingElse ::: (methTree :: forwardedTrees), EmptyTree) :: Nil
+      Block(everythingElse ::: optimized, EmptyTree) :: Nil
     }
 
     def mkNewMethodSymbol(symbol: Symbol, 
-                          name: TermName = TermName("mutualrec_fn"), 
+                          name: TermName, 
                           flags: FlagSet = METHOD | FINAL | PRIVATE | ARTIFACT): Symbol ={
       val methSym = symbol.cloneSymbol(symbol.owner, flags, name)
       val param = methSym.newSyntheticValueParam(definitions.IntTpe, TermName("indx"))
@@ -204,6 +215,60 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         out.setType(ref.tpe)
         out
       case _ => ref
+    }
+  }
+
+  object CyclicComponents{
+    def apply(trees: List[Tree]): List[List[Tree]]={
+      val symbols: Map[Symbol, Tree] = trees.map{ t => (t.symbol, t) }(breakOut)
+      val walker = new CallGraphWalker(symbols.keySet)
+      val adjacencyList: Map[Symbol, List[Symbol]] = trees.map{ tree =>
+        val calls = walker.walk(tree)
+        (tree.symbol, calls)
+      }(breakOut)
+
+      var grouped: List[List[Symbol]] = Nil
+      for(t <- trees if !grouped.exists(_.contains(t.symbol))){
+        grouped = component(t.symbol, adjacencyList) :: grouped
+      }
+      grouped.map(_.map(symbols))
+    }
+
+    //yes, should be using a better algorithm. PRs welcome.
+    def component(root: Symbol, adjacencyList: Map[Symbol, List[Symbol]]): List[Symbol] ={
+      val component = MSet.empty[Symbol]
+      val visited = MSet.empty[Symbol]
+      def visit(s: Symbol, path: List[Symbol] = Nil): Unit = {
+        visited += s
+        adjacencyList(s) foreach{
+          case `root` => component += s ++= path
+          case c if visited.contains(c) => //do nothing
+          case c => visit(c, s :: path)
+        }
+      }
+      visit(root)
+      component.toList
+    }
+  }
+
+  final class CallGraphWalker(search: Set[Symbol]) extends Transformer{
+    private final val calls = MSet.empty[Symbol]
+
+    def walk(tree: Tree): List[Symbol] ={
+      calls clear ()
+      tree match { 
+        case DefDef(_, _, _, _, _, rhs) => transform(rhs)
+        case _ => tree
+      }
+      calls.toList
+    }
+
+    override def transform(tree: Tree): Tree = tree match{
+      case Apply(_, args) if search.contains(tree.symbol) => 
+        calls += tree.symbol
+        transformTrees(args)
+        tree
+      case _ => super.transform(tree)
     }
   }
 }
