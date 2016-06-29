@@ -188,7 +188,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
         val old = oldSkolems ::: tree.symbol.typeParams ::: vparams.flatMap(_.map(_.symbol))
         val neww = deskolemized ::: methSym.typeParams ::: methSym.info.paramss.flatten.drop(1)
-
+        
         callTransformer.transform(rhs)
           .changeOwner(tree.symbol -> methSym)
           .substituteSymbols(old, neww)

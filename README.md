@@ -30,11 +30,11 @@ libraryDependencies ++= Seq(
 )
 ```
 
-TwoTails has been cross compiled against Scala 2.11 and 2.12.0-M4 with the intention of supporting 2.12 proper in the future. If you'd like 2.10 support, open a PR. Help is always appreciated.
+TwoTails has been cross compiled against Scala 2.11 and 2.12.0-M5 with the intention of supporting 2.12 proper in the future. If you'd like 2.10 support, open a PR. Help is always appreciated.
 
 ## Current Limitations
 
-There are several known issues that reduce the effectiveness of this plugin:
+There are two known issues that reduce the effectiveness of this plugin:
 
  * It currently handles only "simple" single-branching recursive structures. That is, it can only handle functions which do not have multiple function calls. The following code will fail to compile:
 
