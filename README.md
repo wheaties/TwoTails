@@ -34,9 +34,22 @@ TwoTails has been cross compiled against Scala 2.11 and 2.12.0-M4 with the inten
 
 ## Current Limitations
 
-There are two current caveats when working with the plugin at the moment
+There are several known issues that reduce the effectiveness of this plugin:
+
+ * It currently handles only "simple" single-branching recursive structures. That is, it can only handle functions which do not have multiple function calls. The following code will fail to compile:
+
+```scala
+import twotails.mutualrec
+
+class Foo{
+  @mutualrec def one(x: Int): Int = if(0 < x) two(x-1) else x
+  @mutualrec def two(x: Int): Int = if(0 < x) one(x-1) else three(x)
+  @mutualrec def three(x: Int): Int = if(0 < x) one(x-1) else x
+}
+```
 
  * The types and arity of the arguments have to match between mutually recursive calls.
  * It does not handle method [size limits](http://stackoverflow.com/questions/17422480/maximum-size-of-a-method-in-java-7-and-8).
+ * Unlike the `tailrec` annotation, it does not fail compilation when a function does not contain recursive logic.
 
-Both of these aspects are active areas of exploration.
+All of these aspects are active areas of exploration.
