@@ -246,24 +246,23 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
   }
 
-  final class CallGraphWalker(search: Set[Symbol]) extends Transformer{
+  final class CallGraphWalker(search: Set[Symbol]) extends Traverser{
     private final val calls = MSet.empty[Symbol]
 
     def walk(tree: Tree): List[Symbol] ={
       calls clear ()
       tree match { 
-        case DefDef(_, _, _, _, _, rhs) => transform(rhs)
+        case DefDef(_, _, _, _, _, rhs) => traverse(rhs)
         case _ => tree
       }
       calls.toList
     }
 
-    override def transform(tree: Tree): Tree = tree match{
+    override def traverse(tree: Tree): Unit = tree match{
       case Apply(_, args) if search.contains(tree.symbol) => 
         calls += tree.symbol
-        transformTrees(args)
-        tree
-      case _ => super.transform(tree)
+        traverseTrees(args)
+      case _ => super.traverse(tree)
     }
   }
 }
