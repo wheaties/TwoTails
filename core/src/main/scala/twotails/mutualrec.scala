@@ -27,15 +27,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
   final class MutualRecTransformer(unit: CompilationUnit) extends TypingTransformer(unit){
 
-    //Thanks @retronym
-    override def transformStats(stats: List[Tree], exprOwner: Symbol): List[Tree] = {
-      val flattened = stats.flatMap {
-        case Block(st, EmptyTree) => st
-        case x => x :: Nil
-      }
-      super.transformStats(flattened, exprOwner)
-    }
-
     override def transform(tree: Tree): Tree = super.transform{
       tree match{
         case cd @ ClassDef(mods, name, tparams, body) =>
@@ -117,7 +108,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
           methTree :: forwardedTrees
       }
 
-      Block(everythingElse ::: optimized, EmptyTree) :: Nil
+      everythingElse ::: optimized
     }
 
     def mkNewMethodSymbol(symbol: Symbol, 
@@ -172,14 +163,18 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         case (body, i) => cq"$i => $body"
       }
 
-      super.transform(q"(indx: @scala.annotation.switch) match{ case ..$cases }")
+      q"(indx: @scala.annotation.switch) match{ case ..$cases }"
     }
 
-    def mkNewMethodTree(methSym: Symbol, tree: Tree, rhs: Tree): Tree = if(tree.symbol != null){
-      localTyper.typedPos(tree.symbol.pos)(DefDef(methSym, rhs))
-    }
-    else{
-      localTyper.typed(DefDef(methSym, rhs))
+    def mkNewMethodTree(methSym: Symbol, tree: Tree, rhs: Tree): Tree ={
+      @tailrec def find(t: Tree): Position = t match{
+        case Block(Nil, r) => if(r.symbol != null) r.symbol.pos else NoPosition
+        case Block(h :: _, _) => find(h)
+        case _  => if (t.symbol != null) t.symbol.pos else NoPosition
+      }
+      localTyper.typedPos(find(tree)){
+        DefDef(methSym, rhs)
+      }
     }
 
     def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
