@@ -91,10 +91,24 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         case ddef: DefDef => hasMutualRec(ddef)
         case _ => false
       }
+      val symbols: Map[Symbol, Tree] = recs.map{ t => (t.symbol, t) }(breakOut)
+      val walker = new CallGraphWalker(symbols.keySet)
+      val adjacencyList: Map[Symbol, List[Symbol]] = recs.map{ tree =>
+        val calls = walker.walk(tree)
+        (tree.symbol, calls)
+      }(breakOut)
+      def groups: List[List[Tree]] ={
+        var grouped: List[List[Symbol]] = Nil
+        for(t <- recs if !grouped.exists(_.contains(t.symbol))){
+          grouped = component(t.symbol, adjacencyList) :: grouped
+        }
+        grouped.map(_.map(symbols))
+      }
+      val ungrouped = recs.filter{ t => adjacencyList(t.symbol).isEmpty }
 
       var tndx = 0
-      val optimized = CyclicComponents(recs) flatMap {
-        case Nil => Nil //TODO: need helpful error here
+      val optimized = groups flatMap {
+        case Nil => Nil
         case head :: Nil => head.symbol
           .removeAnnotation(mtrec)
           .setAnnotations(trec :: Nil)
@@ -108,7 +122,25 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
           methTree :: forwardedTrees
       }
 
-      everythingElse ::: optimized
+      if(ungrouped.isEmpty) everythingElse ::: optimized
+      else everythingElse ::: ungrouped ::: optimized
+    }
+
+    //yes, should be using a better algorithm. PRs welcome.
+    def component(root: Symbol, adjacencyList: Map[Symbol, List[Symbol]]): List[Symbol] ={
+      val out = MSet.empty[Symbol]
+      val visited = MSet.empty[Symbol]
+      def visit(s: Symbol, path: List[Symbol] = Nil): Unit = {
+        visited += s
+        adjacencyList(s) foreach{
+          case `root` => out += s ++= path
+          case c if out.contains(c) => out ++= path
+          case c if visited.contains(c) => //do nothing
+          case c => visit(c, s :: path)
+        }
+      }
+      visit(root)
+      out.filter(adjacencyList(_).nonEmpty).toList
     }
 
     def mkNewMethodSymbol(symbol: Symbol, 
@@ -191,7 +223,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
   }
 
-  class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Tree]) extends Transformer{
+  final class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Tree]) extends Transformer{
     val ref = gen.mkAttributedRef(methSym)
 
     override def transform(tree: Tree): Tree = tree match{
@@ -213,39 +245,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
   }
 
-  object CyclicComponents{
-    def apply(trees: List[Tree]): List[List[Tree]]={
-      val symbols: Map[Symbol, Tree] = trees.map{ t => (t.symbol, t) }(breakOut)
-      val walker = new CallGraphWalker(symbols.keySet)
-      val adjacencyList: Map[Symbol, List[Symbol]] = trees.map{ tree =>
-        val calls = walker.walk(tree)
-        (tree.symbol, calls)
-      }(breakOut)
-
-      var grouped: List[List[Symbol]] = Nil
-      for(t <- trees if !grouped.exists(_.contains(t.symbol))){
-        grouped = component(t.symbol, adjacencyList) :: grouped
-      }
-      grouped.map(_.map(symbols))
-    }
-
-    //yes, should be using a better algorithm. PRs welcome.
-    def component(root: Symbol, adjacencyList: Map[Symbol, List[Symbol]]): List[Symbol] ={
-      val component = MSet.empty[Symbol]
-      val visited = MSet.empty[Symbol]
-      def visit(s: Symbol, path: List[Symbol] = Nil): Unit = {
-        visited += s
-        adjacencyList(s) foreach{
-          case `root` => component += s ++= path
-          case c if visited.contains(c) => //do nothing
-          case c => visit(c, s :: path)
-        }
-      }
-      visit(root)
-      component.toList
-    }
-  }
-
   final class CallGraphWalker(search: Set[Symbol]) extends Traverser{
     private final val calls = MSet.empty[Symbol]
 
@@ -253,7 +252,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       calls clear ()
       tree match { 
         case DefDef(_, _, _, _, _, rhs) => traverse(rhs)
-        case _ => tree
+        case _ => ()
       }
       calls.toList
     }
