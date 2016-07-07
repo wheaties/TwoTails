@@ -50,6 +50,5 @@ class Foo{
 
  * The types and arity of the arguments have to match between mutually recursive calls.
  * It does not handle method [size limits](http://stackoverflow.com/questions/17422480/maximum-size-of-a-method-in-java-7-and-8).
- * Unlike the `tailrec` annotation, it does not fail compilation when a function does not contain recursive logic.
 
 All of these aspects are active areas of exploration.
