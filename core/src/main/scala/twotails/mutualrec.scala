@@ -126,8 +126,10 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       else everythingElse ::: ungrouped ::: optimized
     }
 
-    //yes, should be using a better algorithm. PRs welcome.
     def component(root: Symbol, adjacencyList: Map[Symbol, List[Symbol]]): List[Symbol] ={
+      //checking that the path is one that should be followed
+      def hasSame(that: Symbol): Boolean = that.info.matches(root.info)
+
       val out = MSet.empty[Symbol]
       val visited = MSet.empty[Symbol]
       def visit(s: Symbol, path: List[Symbol] = Nil): Unit = {
@@ -136,7 +138,8 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
           case `root` => out += s ++= path
           case c if out.contains(c) => out ++= path
           case c if visited.contains(c) => //do nothing
-          case c => visit(c, s :: path)
+          case c if hasSame(c) => visit(c, s :: path)
+          case c => visited += c
         }
       }
       visit(root)

@@ -18,6 +18,15 @@ class Bowl{
   @mutualrec final def four(u: Int, v: Int = 1): Int = if(0 < u) three(u-1, v) else v
 }
 
+//Compilation error!
+class Plate{
+  @mutualrec final def zero(x: Int): Int = if(x < 0) x else one(x-1)
+  @mutualrec final def one(x: Int): Int = if(x < 0) two(x, x) else zero(x-1)
+
+  @mutualrec final def two(x: Int, y: Int): Int = if(x < 0) y else three(x-1, y+1)
+  @mutualrec final def three(x: Int, y: Int): Int = if(x < 0) one(x) else two(x-1, y+1)
+}
+
 class MultiRedTest extends FlatSpec with Matchers{
   val fourK = 400000
 
