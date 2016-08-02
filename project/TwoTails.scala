@@ -30,7 +30,10 @@ object TwoTails{
           else
             Some("releases" at nexus + "service/local/staging/deploy/maven2")
         },
-        credentials += Credentials(Path.userHome / ".ivy2" / "credentials" / "sonatype"),
+        credentials += Credentials("Sonatype Nexus Repository Manager",
+                           "oss.sonatype.org",
+                           "???",
+                           "???"),
         pomIncludeRepository := { x => false },
         publishMavenStyle := true,
         publishArtifact in Test := false,
