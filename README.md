@@ -21,12 +21,12 @@ Mutual tail recursion may only be added to methods and not class constructors, v
 
 ## Including
 
-Twotails is currently published to Sonatype and the latest version is 0.1.0. To include this plugin for your project add the following two lines to your build file:
+Twotails is currently published to Sonatype and the latest version is 0.2.0. To include this plugin for your project add the following two lines to your build file:
 
 ```scala
 libraryDependencies ++= Seq(
-  compilerPlugin("com.github.wheaties" %% "twotails" % "0.1.0"),
-  "com.github.wheaties" %% "twotails-annotations" % "0.1.0"
+  compilerPlugin("com.github.wheaties" %% "twotails" % "0.2.0"),
+  "com.github.wheaties" %% "twotails-annotations" % "0.2.0"
 )
 ```
 
@@ -48,7 +48,6 @@ class Foo{
 }
 ```
 
- * The types and arity of the arguments have to match between mutually recursive calls.
  * It does not handle method [size limits](http://stackoverflow.com/questions/17422480/maximum-size-of-a-method-in-java-7-and-8).
 
 All of these aspects are active areas of exploration.
