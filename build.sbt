@@ -25,7 +25,7 @@ lazy val plugin = build("twotails", "core").settings(
     //"-Xprint:erasure"
   ),
   libraryDependencies ++= Seq(
-    "org.scalatest" %% "scalatest" % "2.2.6" % "test"
+    "org.scalatest" %% "scalatest" % "3.0.0" % "test"
   )
 )
 .dependsOn(lib)

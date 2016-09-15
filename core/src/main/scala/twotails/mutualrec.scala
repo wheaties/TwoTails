@@ -97,14 +97,14 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         val calls = walker.walk(tree)
         (tree.symbol, calls)
       }(breakOut)
-      def groups: List[List[Tree]] ={
+      val groups ={
         var grouped: List[List[Symbol]] = Nil
         for(t <- recs if !grouped.exists(_.contains(t.symbol))){
           grouped = component(t.symbol, adjacencyList) :: grouped
         }
         grouped.map(_.map(symbols))
       }
-      val ungrouped = recs.filter{ t => adjacencyList(t.symbol).isEmpty }
+      val ungrouped = recs.filter{ t => !groups.exists(_.contains(t)) }
 
       var tndx = 0
       val optimized = groups flatMap {
@@ -248,8 +248,10 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
   }
 
+  //Searches the Tree and returns all functions found in tailcall position from a search set.
   final class CallGraphWalker(search: Set[Symbol]) extends Traverser{
     private final val calls = MSet.empty[Symbol]
+    private var isValid = true
 
     def walk(tree: Tree): List[Symbol] ={
       calls clear ()
@@ -260,10 +262,49 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       calls.toList
     }
 
+    def step(tree: Tree, valid: Boolean): Unit ={
+      val oldValid = isValid
+      isValid &= valid
+      traverse(tree)
+      isValid = oldValid
+    }
+
+    def steps(trees: List[Tree], valid: Boolean): Unit ={
+      val oldValid = isValid
+      isValid &= valid
+      traverseTrees(trees)
+      isValid = oldValid
+    }
+
     override def traverse(tree: Tree): Unit = tree match{
       case Apply(_, args) if search.contains(tree.symbol) => 
-        calls += tree.symbol
-        traverseTrees(args)
+        if(isValid) calls += tree.symbol else calls -= tree.symbol
+        steps(args, false)
+      case Apply(fun, args) => 
+        step(fun, false)
+        steps(args, false)
+      case DefDef(_, _, _, vparams, _, rhs) =>
+        vparams.foreach(steps(_, false))
+        step(rhs, false)
+      case Block(stats, expr) =>
+        steps(stats, false)
+        step(expr, isValid)
+      case If(pred, ftrue, ffalse) =>
+        step(pred, false)
+        step(ftrue, isValid)
+        step(ffalse, isValid)
+      case Match(selector, cases) =>
+        step(selector, false)
+        steps(cases, isValid)
+      case Try(block, catches, EmptyTree) =>
+        step(block, false) //TODO: Does this mean things surrounded by try{ } aren't tail pos?!
+        steps(catches, isValid)
+      case Try(block, catches, finalizer) =>
+        step(block, false)
+        steps(catches, false)
+        step(finalizer, false)
+      case Select(qual, _) =>
+        step(qual, false)
       case _ => super.traverse(tree)
     }
   }
