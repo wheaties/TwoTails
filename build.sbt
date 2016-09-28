@@ -15,14 +15,15 @@ lazy val plugin = build("twotails", "core").settings(
   scalacOptions in Test ++= Seq(
     "-Xplugin:" + (packageBin in Compile).value,
     //"-verbose",
-    //"-Xprint-types",
+    "-Xprint-types",
     //"-Xprint-pos",
     //"-Xshow-phases",
-    "-Xlog-reflective-calls"
-    //"-Xprint:twotails"
-    //"-Ylog:twotails"
+    "-Xlog-reflective-calls",
+    //"-Xprint:twotails",
+    "-Ylog:twotails"
     //"-Xprint:explicitouter"
     //"-Xprint:erasure"
+    //"-Ycheck:twotails"
   ),
   libraryDependencies ++= Seq(
     "org.scalatest" %% "scalatest" % "3.0.0" % "test"

@@ -21,7 +21,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
   val phaseName = "twotails"
   override val runsBefore = List("tailcalls", "patmat")
   val runsAfter = List("typer")
-  override val requires = List("typer")
 
   def newTransformer(unit: CompilationUnit) = new MutualRecTransformer(unit)
 
@@ -231,6 +230,18 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
 
     override def transform(tree: Tree): Tree = tree match{
       case Apply(fn, _) if symbols.contains(fn.symbol) => multiArgs(tree)
+      case Block(stats, expr) => treeCopy.Block(tree, stats, transform(expr))
+      case If(pred, ftrue, ffalse) => treeCopy.If(tree, pred, transform(ftrue), transform(ffalse))
+      case Match(selector, cases) => 
+        treeCopy.Match(tree, selector, transformTrees(cases).asInstanceOf[List[CaseDef]])
+      case Try(block, catches, EmptyTree) => 
+        treeCopy.Try(tree, block, transformTrees(catches).asInstanceOf[List[CaseDef]], EmptyTree)
+      case that: Apply => that
+      case that: Try => that
+      case that: Select => that
+      case that: DefDef => that
+      case that: ClassDef => that
+      case that: ModuleDef => that
       case _ => super.transform(tree)
     }
 
@@ -256,7 +267,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     def walk(tree: Tree): List[Symbol] ={
       calls clear ()
       tree match { 
-        case DefDef(_, _, _, _, _, rhs) => traverse(rhs)
+        case x:DefDef => traverse(x.rhs)
         case _ => ()
       }
       calls.toList
