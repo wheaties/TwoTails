@@ -226,10 +226,14 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
   }
 
   final class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Tree]) extends Transformer{
-    val ref = gen.mkAttributedRef(methSym)
+    private val ref = gen.mkAttributedRef(methSym)
+    private val bor = currentRun.runDefinitions.Boolean_or
+    private val band = currentRun.runDefinitions.Boolean_and
 
     override def transform(tree: Tree): Tree = tree match{
       case Apply(fn, _) if symbols.contains(fn.symbol) => multiArgs(tree)
+      case Apply(fn, args) if fn.symbol == band || fn.symbol == bor =>
+        treeCopy.Apply(tree, fn, transformTrees(args))
       case Block(stats, expr) => treeCopy.Block(tree, stats, transform(expr))
       case If(pred, ftrue, ffalse) => treeCopy.If(tree, pred, transform(ftrue), transform(ffalse))
       case Match(selector, cases) => 
@@ -287,10 +291,16 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       isValid = oldValid
     }
 
+    private val bor = currentRun.runDefinitions.Boolean_or
+    private val band = currentRun.runDefinitions.Boolean_and
+
     override def traverse(tree: Tree): Unit = tree match{
       case Apply(_, args) if search.contains(tree.symbol) => 
         if(isValid) calls += tree.symbol else calls -= tree.symbol
         steps(args, false)
+      case Apply(fun, args) if fun.symbol == bor || fun.symbol == band =>
+        step(fun, false)
+        steps(args, isValid)
       case Apply(fun, args) => 
         step(fun, false)
         steps(args, false)
@@ -320,3 +330,12 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
   }
 }
+
+/* Taken from the SI-6900 PR
+*
+* Thanks to `InfoTransformer`-s, we routinely find that
+*   `dd.symbol.info.typeParams != dd.tparamss map (_.symbol)`
+*   `dd.symbol.info.paramss != mmap(dd.vparamss)(_.symbol)`
+* in Trees:
+* final def substituteInfoParamsIntoDefDef(dd: DefDef): DefDef
+*/
