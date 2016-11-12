@@ -161,8 +161,8 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
 
     def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree ={
-      val defSymbols: Map[Symbol, Tree] = defdef.zipWithIndex.map{
-        case (d, i) => (d.symbol, localTyper.typed(Literal(Constant(i))))
+      val defSymbols: Map[Symbol, () => Tree] = defdef.zipWithIndex.map{
+        case (d, i) => (d.symbol, {() => localTyper.typed(Literal(Constant(i)))})
       }(breakOut)
       val callTransformer = new MutualCallTransformer(methSym, defSymbols)
       val defrhs = defdef.map{ tree =>
@@ -225,7 +225,11 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
   }
 
-  final class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, Tree]) extends Transformer{
+  /** @notes The newly created method symbol can be reused without issue but if the symbol `Tree`
+   *         of the index literals are reused, creates a `NullPointerException` during Erasure 
+   *         phase.
+   */
+  final class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, () => Tree]) extends Transformer{
     private val ref = gen.mkAttributedRef(methSym)
     private val bor = currentRun.runDefinitions.Boolean_or
     private val band = currentRun.runDefinitions.Boolean_and
@@ -249,11 +253,11 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       case _ => super.transform(tree)
     }
 
-    def multiArgs(tree: Tree):Tree = tree match{
+    def multiArgs(tree: Tree): Tree = tree match{
       case Apply(fn, args) => 
         multiArgs(fn) match{
           case f @ Apply(_, _) => treeCopy.Apply(tree, f, transformTrees(args))
-          case f => treeCopy.Apply(tree, f, symbols(fn.symbol) :: transformTrees(args))
+          case f => treeCopy.Apply(tree, f, symbols(fn.symbol)() :: transformTrees(args))
         }
       case TypeApply(fn, targs) => 
         val out = treeCopy.TypeApply(tree, ref, targs)
@@ -330,12 +334,3 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     }
   }
 }
-
-/* Taken from the SI-6900 PR
-*
-* Thanks to `InfoTransformer`-s, we routinely find that
-*   `dd.symbol.info.typeParams != dd.tparamss map (_.symbol)`
-*   `dd.symbol.info.paramss != mmap(dd.vparamss)(_.symbol)`
-* in Trees:
-* final def substituteInfoParamsIntoDefDef(dd: DefDef): DefDef
-*/

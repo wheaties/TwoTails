@@ -30,11 +30,10 @@ class Rabbit{
   @mutualrec final def three(count: Int): Either[String,Int] = if (count == 0) Right(0) else one(count-1)
 }
 
-/*class Dog{
+class Dog{
   @mutualrec final def dog1(count: Int): Int = if (count < 0) 0 else dog2(count - 1)
-  @mutualrec final def dog2(count: Int): Int = if (count < 0) dog1(count) else dog3(count)
-  @mutualrec final def dog3(count: Int): Int = if (count < 0) 0 else dog1(count - 1)
-}*/
+  @mutualrec final def dog2(count: Int): Int = if (count < 0) dog1(count) else dog2(count - 1)
+}
 
 /*class Husky{
   @mutualrec final def dog1(count: Int): Int = if (count == 0) count else dog2(count - 1)
@@ -108,7 +107,7 @@ class BasicTest extends FlatSpec with Matchers{
       chip.two(fourK)
     }
     
-    ex.getStackTrace()(0).getLineNumber() should equal(70)
-    ex2.getStackTrace()(0).getLineNumber() should equal(68)
+    ex.getStackTrace()(0).getLineNumber() should equal(69)
+    ex2.getStackTrace()(0).getLineNumber() should equal(67)
   }
 }
