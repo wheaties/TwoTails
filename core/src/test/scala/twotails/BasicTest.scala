@@ -45,7 +45,7 @@ class Dog{
   }
 }*/
 
-/*class Moose{
+class Moose{
   @mutualrec final def one(count: Int): Int = (count: @switch) match{
   	case 0 => 0
   	case 1 => three(0)
@@ -56,12 +56,12 @@ class Dog{
   	case 1 => one(0)
   	case _ => three(count-1)
   }
-  @mutualrec final def dog3(count: Int): Int = (count: @switch) match{
+  @mutualrec final def three(count: Int): Int = (count: @switch) match{
   	case 0 => 0
   	case 1 => two(0)
   	case _ => one(count-1)
   }
-}*/
+}
 
 final class Chipmunk{
   @mutualrec def one(x: Int): Int = if(x < 0) throw new Exception("boom!") else two(x-1)
@@ -95,6 +95,18 @@ class BasicTest extends FlatSpec with Matchers{
     intercept[StackOverflowError]{
       err.one(fourK)
     }
+  }
+
+  "Two mutually recursive, single escape, annotated methods" should "not throw a StackOverflow" in{
+    val dog = new Dog
+
+    dog.dog1(fourK) should equal (dog.dog2(fourK))
+  }
+
+  "A switch statement" should "not prevent mutual tail recursion" in{
+    val moose = new Moose
+
+    moose.one(fourK) should equal (0)
   }
 
   "An exception thrown by a mutually recursive function" should "have the correct position" in{

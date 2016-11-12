@@ -298,6 +298,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
     private val bor = currentRun.runDefinitions.Boolean_or
     private val band = currentRun.runDefinitions.Boolean_and
 
+    //Attempting to use the same search criteria as found in TailRec.
     override def traverse(tree: Tree): Unit = tree match{
       case Apply(_, args) if search.contains(tree.symbol) => 
         if(isValid) calls += tree.symbol else calls -= tree.symbol
