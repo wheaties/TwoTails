@@ -17,7 +17,12 @@ class Foo{
 }
 ```
 
-Mutual tail recursion may only be added to methods which are not class constructors; this naturally precludes vals or vars. If a single method is annotated with `mutualrec` it will be replaced by a `@tailrec` annotation. Similarly to `@tailrec`, methods annotated must be effectively final and the return type explicitly provided (effectively final being defined as `final`, `private`, part of a package object, or within a `def`.) Methods not within the same parent scope, for example two methods on two different distinct classes, will not be optimized and will result in a compilation error.
+Some rules to follow to get the code to compile when working with this plugin:
+
+1. Mutual tail recursion may only be added to methods which are not class constructors; this naturally precludes `val`, `lazy val`, or `var`. 
+2. If a single method is annotated with `mutualrec` it will be replaced by a `@tailrec` annotation.
+3. Similarly to `@tailrec`, methods annotated must be effectively final and the return type explicitly provided (effectively final being defined as `final`, `private`, part of a package object, or within a `def`.) 
+4. Methods not within the same parent scope, for example two methods on two different distinct classes, will not be optimized and will result in a compilation error.
 
 ## Including
 
@@ -34,4 +39,7 @@ TwoTails has been cross compiled against Scala 2.11 and 2.12.0-M5 with the inten
 
 ## Current Limitations
 
-It does not handle method [size limits](http://stackoverflow.com/questions/17422480/maximum-size-of-a-method-in-java-7-and-8). For a large groups of functions or for a combination of functions where one method relies heavily on complex pattern matching, the plugin can cause the code to fail to compile. Even still, large methods can prevent the JIT from making certain types and forms of optimizations. It is suggested that if performance is an issue, benchmark the code.
+It does not handle method [size limits](http://stackoverflow.com/questions/17422480/maximum-size-of-a-method-in-java-7-and-8). This leads to two problems:
+
+1. For a large groups of functions or for a combination of functions where one method relies heavily on complex pattern matching (which by itself can cause this issue), the plugin can cause the code to fail to compile. 
+2. Large methods can prevent the JIT from making certain types and forms of optimizations. It is suggested that if performance is an issue, benchmark the code.
