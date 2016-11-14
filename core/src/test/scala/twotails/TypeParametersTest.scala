@@ -41,6 +41,16 @@ class Belize{
   @mutualrec final def two[A](x: A, y: Int): A = if(0 < y) one(x, y) else two(x, y-1)
 }
 
+class CostaRica{
+  class Dep{
+    type Out = Int
+    def out: Out = 1
+  }
+
+  @mutualrec final def one(x: Int, dep: Dep): dep.Out = if(x < 0) dep.out else two(x-1, dep)
+  @mutualrec final def two(x: Int, dep: Dep): dep.Out = if(x < 0) dep.out else one(x-1, dep)
+}
+
 class TypeParamtersTest extends FlatSpec with Matchers{
   val fourK = 400000
 

@@ -19,7 +19,7 @@ class Bar{
 
 class ErrBar{
   def one(x: Int): Int = if(0 < x) two(x-1) else 0
-  def two(x: Int): Int = if(0 < x) one(x-2) else 0
+  def two(x: Int): Int = if(0 < x) one(x-1) else 0
 }
 
 class Rabbit{

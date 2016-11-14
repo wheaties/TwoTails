@@ -5,7 +5,7 @@ import java.lang.StackOverflowError
 
 object Blappy{
   @mutualrec final def one(x: Int): Int = if(0 < x) two(x-1) else 0
-  @mutualrec final def two(x: Int): Int = if(0 < x) one(x-2) else 0
+  @mutualrec final def two(x: Int): Int = if(0 < x) one(x-1) else 0
 
   final def three(x: Int): Int = if(0 < x) four(x-1) else 0
   final def four(x: Int): Int = if(0 < x) three(x-1) else 0
