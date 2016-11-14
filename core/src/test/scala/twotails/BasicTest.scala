@@ -17,11 +17,6 @@ class Bar{
   @mutualrec final def two(x: Int): Int = if(0 < x) one(x-2) else x
 }
 
-class ErrBar{
-  def one(x: Int): Int = if(0 < x) two(x-1) else 0
-  def two(x: Int): Int = if(0 < x) one(x-1) else 0
-}
-
 class Rabbit{
   @mutualrec final def one(count: Int): Either[String,Int] = 
     if (count < 0) Left("0") else two(count)
@@ -89,14 +84,6 @@ class BasicTest extends FlatSpec with Matchers{
     b.one(fourK) should equal (0)
   }
 
-  "Two mutually recursive, single argument but not annotated methods" should "throw a StackOverflow" in{
-    val err = new ErrBar
-
-    intercept[StackOverflowError]{
-      err.one(fourK)
-    }
-  }
-
   "Two mutually recursive, single escape, annotated methods" should "not throw a StackOverflow" in{
     val dog = new Dog
 
@@ -119,7 +106,7 @@ class BasicTest extends FlatSpec with Matchers{
       chip.two(fourK)
     }
     
-    ex.getStackTrace()(0).getLineNumber() should equal(69)
-    ex2.getStackTrace()(0).getLineNumber() should equal(67)
+    ex.getStackTrace()(0).getLineNumber() should equal(64)
+    ex2.getStackTrace()(0).getLineNumber() should equal(62)
   }
 }
