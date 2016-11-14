@@ -11,3 +11,10 @@ jdk:
   - openjdk7
   - oraclejdk7
   - oraclejdk8
+
+matrix:
+  exclude:
+    - scala: 2.12.0
+      jdk: oraclejdk7
+    - scala: 2.12.0
+      jdk: openjdk7
