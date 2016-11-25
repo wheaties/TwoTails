@@ -2,7 +2,7 @@
 
 A compiler plugin to add a new phase to the compiler which supports mutual tail recursion.
 
-[![Gitter](https://badges.gitter.im/wheaties/TwoTails.svg)](https://gitter.im/wheaties/TwoTails?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![Build Status](https://travis-ci.org/wheaties/TwoTails.svg?branch=master)](https://travis-ci.org/wheaties/TwoTails) [![Gitter](https://badges.gitter.im/wheaties/TwoTails.svg)](https://gitter.im/wheaties/TwoTails?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 ## Using
 
@@ -35,11 +35,21 @@ libraryDependencies ++= Seq(
 )
 ```
 
-TwoTails has been cross compiled against Scala 2.11 and 2.12.0-M5 with the intention of supporting 2.12 proper in the future. If you'd like 2.10 support, open a PR. Help is always appreciated.
+TwoTails has been cross compiled and published against Scala 2.11.8. Tests are run against 2.11.7, 2.11.8 and 2.12.0 with the intention of supporting 2.12.x and Scala.js in the future. If you'd like 2.10 support, open a PR. Help is always appreciated. No guarantee exists
 
 ## Current Limitations
 
-It does not handle method [size limits](http://stackoverflow.com/questions/17422480/maximum-size-of-a-method-in-java-7-and-8). This leads to two problems:
+TwoTails does not handle method [size limits](http://stackoverflow.com/questions/17422480/maximum-size-of-a-method-in-java-7-and-8). This leads to two problems:
 
 1. For a large groups of functions or for a combination of functions where one method relies heavily on complex pattern matching (which by itself can cause this issue), the plugin can cause the code to fail to compile. 
 2. Large methods can prevent the JIT from making certain types and forms of optimizations. It is suggested that if performance is an issue, benchmark the code.
+
+TwoTails adds in a code transforming phase to the compiler. As such, code using macros or code enhancing techniques (such as that in [Spring](https://spring.io/)) may fail to compile at best or work in the expected manner at worst. We want to specifically call out [AoP](https://en.wikipedia.org/wiki/Aspect-oriented_programming) libraries such as [AspectJ](https://eclipse.org/aspectj/) where the intention of an author is to have each "loop" of the recursive call trigger some  side-effect. In such cases, similar to code using `@tailcall`, only the first "loop" will induce the effect; all others will have been compiled away.
+
+## Participation
+
+PRs are welcome and encouraged. Please do not leave any defamatory remarks or swear words in the comments of code submitted. TODOs may be left in so long as they are informative. Unit tests are nice but compilation tests nicer (a `class` or `object` stressing the plugin.) Purposefully failing constructs may be left in one of the unit test sections commented out until the project can be set up to run with [Scala-Partest](https://github.com/scala/scala-partest). 
+
+Bug reports are appreciated. Bug reports submitted with reproducible errors are more appreciated. Reports of issues with other compiler plugins should be submitted to all plugin projects. New features or feature requests are not bugs.
+
+TwoTails supports the TypeLevel [Code of Conduct](http://typelevel.org/conduct.html). All conversations within the Gitter room and/or other public online venues are asked to respect and adhere to the terms laid out therein (tl;dr? don't be rude, belittle or harass others.) Mutual recursion demands mutual respect.
