@@ -2,7 +2,8 @@
 
 A compiler plugin to add a new phase to the compiler which supports mutual tail recursion.
 
-[![Build Status](https://travis-ci.org/wheaties/TwoTails.svg?branch=master)](https://travis-ci.org/wheaties/TwoTails) [![Gitter](https://badges.gitter.im/wheaties/TwoTails.svg)](https://gitter.im/wheaties/TwoTails?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
+[![Typelevel incubator](https://img.shields.io/badge/typelevel-incubator-F51C2B.svg)](http://typelevel.org) [![Build Status](https://travis-ci.org/wheaties/TwoTails.svg?branch=master)](https://travis-ci.org/wheaties/TwoTails) [![Gitter](https://badges.gitter.im/wheaties/TwoTails.svg)](https://gitter.im/wheaties/TwoTails?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 ## Using
 
@@ -44,7 +45,7 @@ TwoTails does not handle method [size limits](http://stackoverflow.com/questions
 1. For a large groups of functions or for a combination of functions where one method relies heavily on complex pattern matching (which by itself can cause this issue), the plugin can cause the code to fail to compile. 
 2. Large methods can prevent the JIT from making certain types and forms of optimizations. It is suggested that if performance is an issue, benchmark the code.
 
-TwoTails adds in a code transforming phase to the compiler. As such, code using macros or code enhancing techniques (such as that in [Spring](https://spring.io/)) may fail to compile at best or work in the expected manner at worst. We want to specifically call out [AoP](https://en.wikipedia.org/wiki/Aspect-oriented_programming) libraries such as [AspectJ](https://eclipse.org/aspectj/) where the intention of an author is to have each "loop" of the recursive call trigger some  side-effect. In such cases, similar to code using `@tailcall`, only the first "loop" will induce the effect; all others will have been compiled away.
+TwoTails adds in a code transforming phase to the compiler. As such, code using macros or code enhancing techniques (such as that in [Spring](https://spring.io/)) may fail to compile at best or work in an unexpected manner at worst. We want to specifically call out [AoP](https://en.wikipedia.org/wiki/Aspect-oriented_programming) libraries such as [AspectJ](https://eclipse.org/aspectj/) where the intention of an author is to have each "loop" of the recursive call trigger some  side-effect. In such cases, similar to code using `@tailcall`, only the first "loop" will induce the effect; all others will have been compiled away.
 
 ## Participation
 
