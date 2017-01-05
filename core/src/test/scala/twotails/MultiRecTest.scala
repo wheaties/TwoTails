@@ -35,7 +35,7 @@ class Saucer{
   @mutualrec final def three(x: Int, y: Int): Int = if(x < 0) two(x-1, y+1) else one(x)
 }
 
-class MultiRedTest extends FlatSpec with Matchers{
+class MultiRecTest extends FlatSpec with Matchers{
   val fourK = 400000
 
   "a class with two sets of mutually recursive functions" should "just work" in{

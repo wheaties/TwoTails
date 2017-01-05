@@ -3,7 +3,7 @@ import com.typesafe.sbt.SbtSite.SiteKeys._
 import com.typesafe.sbt.SbtGhPages.GhPagesKeys._
 
 lazy val root = (project in file(".")).settings(
-  scalaVersion := "2.12.0",
+  scalaVersion := ScalacVersion,
   crossVersion := CrossVersion.full,
   crossScalaVersions := Seq("2.11.6", "2.11.7", "2.11.8", "2.12.0", "2.12.1"),
   publishArtifact := false
@@ -16,16 +16,17 @@ lazy val plugin = build("twotails", "core").settings(
   ),
   scalacOptions in Test ++= Seq(
     "-Xplugin:" + (packageBin in Compile).value,
-    //"-verbose",
+    "-verbose",
     "-Xprint-types",
     //"-Xprint-pos",
     //"-Xshow-phases",
     "-Xlog-reflective-calls",
-    //"-Xprint:twotails",
-    "-Ylog:twotails"
-    //"-Xprint:explicitouter"
-    //"-Xprint:erasure"
-    //"-Ycheck:twotails"
+    //"-Xprint:superaccessors",
+    //"-Xprint:extmethods",
+    //"-Xprint:refchecks",
+    "-Xprint:twotails",
+    "-Ylog:twotails",
+    "-Ycheck:twotails"
   ),
   libraryDependencies ++= Seq(
     "org.scalatest" %% "scalatest" % "3.0.0" % "test"

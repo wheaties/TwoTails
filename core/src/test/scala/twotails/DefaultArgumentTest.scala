@@ -25,6 +25,10 @@ class GuardRail{
 class DefaultArgumentTest extends FlatSpec with Matchers{
   val fourK = 400000
 
+  "got here" should "ok" in{
+    1 should equal(1)
+  }
+
   "mutually recursive functions with default args" should "use the default args" in{
   	val sb = new SpeedBump
   	sb.one(fourK) should not equal sb.two(fourK)
