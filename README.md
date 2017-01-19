@@ -27,12 +27,12 @@ Some rules to follow to get the code to compile when working with this plugin:
 
 ## Including
 
-Twotails is currently published to Sonatype and the latest version is 0.3.0. To include this plugin for your project add the following two lines to your build file:
+Twotails is currently published to Sonatype and the latest version is 0.3.1. To include this plugin for your project add the following two lines to your build file:
 
 ```scala
 libraryDependencies ++= Seq(
-  compilerPlugin("com.github.wheaties" %% "twotails" % "0.3.0"),
-  "com.github.wheaties" %% "twotails-annotations" % "0.3.0"
+  compilerPlugin("com.github.wheaties" %% "twotails" % "0.3.1"),
+  "com.github.wheaties" %% "twotails-annotations" % "0.3.1"
 )
 ```
 

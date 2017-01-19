@@ -3,7 +3,9 @@ import com.typesafe.sbt.SbtSite.SiteKeys._
 import com.typesafe.sbt.SbtGhPages.GhPagesKeys._
 
 lazy val root = (project in file(".")).settings(
-  scalaVersion := "2.12.0", //"2.11.8",
+  scalaVersion := "2.12.0",
+  crossVersion := CrossVersion.full,
+  crossScalaVersions := Seq("2.11.6", "2.11.7", "2.11.8", "2.12.0", "2.12.1"),
   publishArtifact := false
 )
 .aggregate(plugin, lib)
