@@ -31,8 +31,8 @@ Twotails is currently published to Sonatype and the latest version is 0.3.1. To 
 
 ```scala
 libraryDependencies ++= Seq(
-  compilerPlugin("com.github.wheaties" %% "twotails" % "0.3.1"),
-  "com.github.wheaties" %% "twotails-annotations" % "0.3.1"
+  compilerPlugin("com.github.wheaties" %% "twotails" % "0.3.1" cross CrossVersion.full),
+  "com.github.wheaties" %% "twotails-annotations" % "0.3.1" cross CrossVersion.full
 )
 ```
 
