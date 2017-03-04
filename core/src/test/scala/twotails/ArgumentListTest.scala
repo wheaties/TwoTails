@@ -8,7 +8,7 @@ class Bippy{
 }
 
 class Baz{
-  @mutualrec final def one(x: Int)(y: Int): Int = if(0 < x) two(y)(x) else 0 
+  @mutualrec final def one(x: Int)(y: Int): Int = if(0 < x) two(y)(x) else 0
   @mutualrec final def two(x: Int)(y: Int): Int = if(0 < x) one(x-1)(y-1) else 0
 }
 
