@@ -2,5 +2,5 @@ package twotails
 
 import scala.annotation.{StaticAnnotation, compileTimeOnly}
 
-@compileTimeOnly("Unable to tail call optimize as this is either not effectively final or a non-constructor method.")
+@compileTimeOnly("Unable to mutually tail call optimize this.")
 final class mutualrec extends StaticAnnotation

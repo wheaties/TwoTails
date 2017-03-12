@@ -12,6 +12,11 @@ class Gnat{
   @mutualrec final def two(u: Int)(v: Int): Int = if(0 < u) one(u-1)(v) else v
 }
 
+/*class Mosquito{
+  @mutualrec final def one(x: Int, y: => Int): Int = if(0 < x) two(x-1, y) else y
+  @mutualrec final def two(x: Int, y: => Int): Int = if(0 < x) one(x-1, y) else y
+}*/
+
 class ArgumentNameTest extends FlatSpec with Matchers{
   val fourK = 400000
 

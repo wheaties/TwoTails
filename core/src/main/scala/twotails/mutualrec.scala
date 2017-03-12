@@ -4,23 +4,39 @@ import scala.annotation.{switch, tailrec}
 import scala.tools.nsc.{Global, Phase}
 import scala.tools.nsc.plugins.{Plugin, PluginComponent}
 import scala.tools.nsc.symtab.Flags._
-import scala.tools.nsc.transform.{Transform, TypingTransformers}
 import collection.mutable.{Map => MMap, Set => MSet}
 import collection.breakOut
 
 class TwoTailsPlugin(val global: Global) extends Plugin{
   val name = "twotails"
   val description = "Adds support for mutually recursive functions in Scala."
-  val components = List[PluginComponent](new MutualRecComponent(this, global))
+  var limitSize = true
+
+  override def init(options: List[String], error: String => Unit): Boolean ={
+    options.foreach{ 
+      case "size" => limitSize = true
+      case "memory" => limitSize = false
+      case opt => error(s"Option $opt is not a valid compiler option for TwoTails.")
+    }
+    true
+  }
+
+  //see: https://github.com/scala/scala/blob/2.12.x/src/compiler/scala/tools/nsc/plugins/Plugin.scala
+  override val optionsHelp: Option[String] = Some{
+    "-P:twotails:size >> The default setting, transforms mutual recursion based on JVM method size limitations.\n" +
+    "-P:twotails:memory >> Transforms mutual recursion so as to limit allocation overhead. Use with caution."
+  }
+
+  val components = List[PluginComponent](new MutualRecComponent(global, { () => limitSize }))
 }
 
-class MutualRecComponent(val plugin: Plugin, val global: Global) 
-    extends PluginComponent with Transform with TypingTransformers {
+final class MutualRecComponent(val global: Global, limitSize: () => Boolean) 
+    extends PluginComponent with SizeLimited {
   import global._
 
   val phaseName = "twotails"
-  override val runsBefore = List("tailcalls", "patmat")
-  val runsAfter = List("typer")
+  override val runsBefore = List("tailcalls", "uncurry", "patmat")
+  val runsAfter = List("typer")//, "patmat")
 
   def newTransformer(unit: CompilationUnit) = new MutualRecTransformer(unit)
 
@@ -69,9 +85,6 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       }
     }
 
-    private final val mtrec: Symbol = rootMirror.getRequiredClass("twotails.mutualrec")
-    private final val trec = AnnotationInfo(definitions.TailrecClass.tpe, Nil, Nil)
-
     def hasMutualRec(tree: Tree) = 
       (tree.symbol != NoSymbol) &&
       tree.symbol.annotations.exists(_.tpe.typeSymbol == mtrec)
@@ -81,9 +94,12 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       case ddef: DefDef if hasMutualRec(ddef) => 
         ddef.symbol
           .removeAnnotation(mtrec)
-          .setAnnotations(trec :: Nil)
+          .withAnnotations(trec :: Nil)
       case _ => 
     }
+
+    private lazy val mutualMethod = if(limitSize()) new SizeLimitedMethod(localTyper) 
+      else new AllocationLimitedMethod(localTyper)
 
     def convertMutualRec(root: Tree, body: List[Tree]): List[Tree] ={
       val (recs, everythingElse) = body.partition{
@@ -91,7 +107,7 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         case _ => false
       }
       val symbols: Map[Symbol, Tree] = recs.map{ t => (t.symbol, t) }(breakOut)
-      val walker = new CallGraphWalker(symbols.keySet)
+      val walker = new CallGraphWalker(symbols.keySet, !limitSize())
       val adjacencyList: Map[Symbol, List[Symbol]] = recs.map{ tree =>
         val calls = walker.walk(tree)
         (tree.symbol, calls)
@@ -110,19 +126,30 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         case Nil => Nil
         case head :: Nil => head.symbol
           .removeAnnotation(mtrec)
-          .setAnnotations(trec :: Nil)
+          .withAnnotations(trec :: Nil)
           head :: Nil
-        case head :: tail => 
-          val methSym = mkNewMethodSymbol(head.symbol, TermName("mutualrec_fn$" + tndx))
-          val rhs = mkNewMethodRhs(methSym, head :: tail)
-          val methTree = mkNewMethodTree(methSym, root, rhs)
-          val forwardedTrees = forwardTrees(methSym, head :: tail)
+        case defs =>
+          val (methSym, methTree) = mutualMethod(root, defs, TermName("mutualrec_fn$" + tndx))
+          val forwardedTrees = forwardTrees(methSym, defs)
           tndx += 1
           methTree :: forwardedTrees
       }
 
       if(ungrouped.isEmpty) everythingElse ::: optimized
       else everythingElse ::: ungrouped ::: optimized
+    }
+
+    def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
+      case (tree, indx) =>
+        val DefDef(_, _, _, vp :: vps, _, _) = tree
+        val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
+        val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
+        val forwarderTree = (Apply(refTree, newVp) /: vps){
+          (fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
+        }
+        val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
+        if(tree.symbol.isEffectivelyFinalOrNotOverridden) forwarded.symbol.removeAnnotation(mtrec)
+        forwarded
     }
 
     def component(root: Symbol, adjacencyList: Map[Symbol, List[Symbol]]): List[Symbol] ={
@@ -144,92 +171,76 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       visit(root)
       out.filter(adjacencyList(_).nonEmpty).toList
     }
-
-    def mkNewMethodSymbol(symbol: Symbol, 
-                          name: TermName, 
-                          flags: FlagSet = METHOD | FINAL | PRIVATE | ARTIFACT): Symbol ={
-      val methSym = symbol.cloneSymbol(symbol.owner, flags, name)
-      val param = methSym.newSyntheticValueParam(definitions.IntTpe, TermName("indx"))
-      
-      methSym.modifyInfo {
-        case GenPolyType(tparams, MethodType(params, res)) => GenPolyType(tparams, MethodType(param :: params, res))
-      }
-      methSym
-        .removeAnnotation(mtrec)
-        .setAnnotations(trec :: Nil)
-      localTyper.namer.enterInScope(methSym)
-    }
-
-    def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree ={
-      val defSymbols: Map[Symbol, () => Tree] = defdef.zipWithIndex.map{
-        case (d, i) => (d.symbol, {() => localTyper.typed(Literal(Constant(i)))})
-      }(breakOut)
-      val callTransformer = new MutualCallTransformer(methSym, defSymbols)
-      val defrhs = defdef.map{ tree =>
-        val DefDef(_, _, _, vparams, _, rhs) = tree
-
-        //shamelessly taken from @retronym's example #20 of the Scalac survival guide.
-        val origTparams = tree.symbol.info.typeParams
-        val (oldSkolems, deskolemized) = if(origTparams.isEmpty) (Nil, Nil) else{
-          val skolemSubst = MMap.empty[Symbol, Symbol]
-          rhs.foreach{
-            _.tpe.foreach {
-              case tp if tp.typeSymbolDirect.isSkolem =>
-                val tparam = tp.typeSymbolDirect.deSkolemize
-                if (!skolemSubst.contains(tparam) && origTparams.contains(tparam)) {
-                  skolemSubst(tp.typeSymbolDirect) = methSym.typeParams(origTparams.indexOf(tparam))
-                }
-              case _ =>
-            }
-          }
-          skolemSubst.toList.unzip
-        }
-
-        val old = oldSkolems ::: tree.symbol.typeParams ::: vparams.flatMap(_.map(_.symbol))
-        val neww = deskolemized ::: methSym.typeParams ::: methSym.info.paramss.flatten.drop(1)
-        
-        callTransformer.transform(rhs)
-          .changeOwner(tree.symbol -> methSym)
-          .substituteSymbols(old, neww)
-      }
-
-      val cases = defrhs.zipWithIndex.map{
-        case (body, i) => cq"$i => $body"
-      }
-
-      q"(indx: @scala.annotation.switch) match{ case ..$cases }"
-    }
-
-    def mkNewMethodTree(methSym: Symbol, tree: Tree, rhs: Tree): Tree ={
-      @tailrec def find(t: Tree): Position = t match{
-        case Block(Nil, r) => if(r.symbol != null) r.symbol.pos else NoPosition
-        case Block(h :: _, _) => find(h)
-        case _  => if (t.symbol != null) t.symbol.pos else NoPosition
-      }
-      localTyper.typedPos(find(tree)){
-        DefDef(methSym, rhs)
-      }
-    }
-
-    def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
-  	  case (tree, indx) =>
-        val DefDef(_, _, _, vp :: vps, _, _) = tree
-        val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
-        val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
-        val forwarderTree = (Apply(refTree, newVp) /: vps){
-          (fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
-        }
-        val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
-        if(tree.symbol.isEffectivelyFinalOrNotOverridden) forwarded.symbol.removeAnnotation(mtrec)
-        forwarded
-    }
   }
+
+    class AllocationLimitedMethod(localTyper: analyzer.Typer) extends MutualMethod{
+      def mkNewMethodSymbol(symbol: Symbol, name: TermName): Symbol ={
+        val flags = METHOD | FINAL | PRIVATE | ARTIFACT
+        val methSym = symbol.cloneSymbol(symbol.owner, flags, name)
+        val param = methSym.newSyntheticValueParam(definitions.IntTpe, TermName("indx"))
+      
+        methSym.modifyInfo {
+          case GenPolyType(tparams, MethodType(params, res)) => GenPolyType(tparams, MethodType(param :: params, res))
+        }
+        methSym
+          .removeAnnotation(mtrec)
+          .withAnnotations(trec :: Nil)
+        localTyper.namer.enterInScope(methSym)
+      }
+
+      def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree ={
+        val defSymbols: Map[Symbol, () => Tree] = defdef.zipWithIndex.map{
+          case (d, i) => (d.symbol, {() => localTyper.typed(Literal(Constant(i)))})
+        }(breakOut)
+        val callTransformer = new AllocCallTransformer(methSym, defSymbols)
+        val indxSym :: paramSymbols = methSym.info.paramss.flatten
+        val defrhs = defdef.map{ tree =>
+          val DefDef(_, _, _, vparams, _, rhs) = tree
+
+          //shamelessly taken from @retronym's example #20 of the Scalac survival guide.
+          val origTparams = tree.symbol.info.typeParams
+          val (oldSkolems, deskolemized) = if(origTparams.isEmpty) (Nil, Nil) else{
+            val skolemSubst = MMap.empty[Symbol, Symbol]
+            rhs.foreach{
+              _.tpe.foreach {
+                case tp if tp.typeSymbolDirect.isSkolem =>
+                  val tparam = tp.typeSymbolDirect.deSkolemize
+                  if (!skolemSubst.contains(tparam) && origTparams.contains(tparam)) {
+                    skolemSubst(tp.typeSymbolDirect) = methSym.typeParams(origTparams.indexOf(tparam))
+                  }
+                case _ =>
+              }
+            }
+            skolemSubst.toList.unzip
+          }
+
+          val old = oldSkolems ::: tree.symbol.typeParams ::: vparams.flatMap(_.map(_.symbol))
+          val neww = deskolemized ::: methSym.typeParams ::: paramSymbols
+        
+          callTransformer.transform(rhs)
+            .changeOwner(tree.symbol -> methSym)
+            .substituteSymbols(old, neww)
+        }
+
+        val cases = defrhs.zipWithIndex.map{
+          case (body, i) => cq"$i => $body"
+        }
+
+        val indxRef = gen.mkAttributedRef(indxSym) setType definitions.IntTpe
+        q"($indxRef: @scala.annotation.switch) match{ case ..$cases }"
+      }
+
+      def mkNewMethodTree(methSym: Symbol, tree: Tree, rhs: Tree): Tree =
+        localTyper.typedPos(tree.pos){
+          DefDef(methSym, rhs)
+        }
+    }
 
   /** @notes The newly created method symbol can be reused without issue but if the symbol `Tree`
    *         of the index literals are reused, creates a `NullPointerException` during Erasure 
    *         phase.
    */
-  final class MutualCallTransformer(methSym: Symbol, symbols: Map[Symbol, () => Tree]) extends Transformer{
+  final class AllocCallTransformer(methSym: Symbol, symbols: Map[Symbol, () => Tree]) extends Transformer{
     private val ref = gen.mkAttributedRef(methSym)
     private val bor = currentRun.runDefinitions.Boolean_or
     private val band = currentRun.runDefinitions.Boolean_and
@@ -259,18 +270,18 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
           case f @ Apply(_, _) => treeCopy.Apply(tree, f, transformTrees(args))
           case f => treeCopy.Apply(tree, f, symbols(fn.symbol)() :: transformTrees(args))
         }
-      case TypeApply(fn, targs) => 
-        val out = treeCopy.TypeApply(tree, ref, targs)
-        out.setType(ref.tpe)
-        out
+      case TypeApply(fn, targs) => treeCopy.TypeApply(tree, ref, targs) setType (ref.tpe)
       case _ => ref
     }
   }
 
   //Searches the Tree and returns all functions found in tailcall position from a search set.
-  final class CallGraphWalker(search: Set[Symbol]) extends Traverser{
+  final class CallGraphWalker(search: Set[Symbol], andOr: Boolean) extends Traverser{
     private final val calls = MSet.empty[Symbol]
     private var isValid = true
+
+    private val bor = currentRun.runDefinitions.Boolean_or
+    private val band = currentRun.runDefinitions.Boolean_and
 
     def walk(tree: Tree): List[Symbol] ={
       calls clear ()
@@ -295,17 +306,19 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
       isValid = oldValid
     }
 
-    private val bor = currentRun.runDefinitions.Boolean_or
-    private val band = currentRun.runDefinitions.Boolean_and
-
-    //Attempting to use the same search criteria as found in TailRec.
+    /** Attempting to mirror the same search criteria as found in TailRec. Will not handle
+     *  the case of the "or" or "and" functions ("||" and "&&" respectfully) as I don't
+     *  know how that type of conversion can be made.
+     *
+     *  TODO: Figure out how transform || and && for size-limited transformation.
+     */
     override def traverse(tree: Tree): Unit = tree match{
       case Apply(_, args) if search.contains(tree.symbol) => 
         if(isValid) calls += tree.symbol else calls -= tree.symbol
         steps(args, false)
       case Apply(fun, args) if fun.symbol == bor || fun.symbol == band =>
         step(fun, false)
-        steps(args, isValid)
+        steps(args, isValid && andOr)
       case Apply(fun, args) => 
         step(fun, false)
         steps(args, false)
@@ -331,6 +344,15 @@ class MutualRecComponent(val plugin: Plugin, val global: Global)
         step(finalizer, false)
       case Select(qual, _) =>
         step(qual, false)
+      case Function(vparams, body) =>
+        steps(vparams, false)
+        step(body, false)
+      case UnApply(fun, args) =>
+        step(fun, false)
+        steps(args, false)
+      case ClassDef(_, _, _, body) => step(body, false)
+      case ModuleDef(_, _, body) => step(body, false)
+      case ValDef(_, _, _, rhs) => step(rhs, false)
       case _ => super.traverse(tree)
     }
   }

@@ -4,12 +4,16 @@ import xerial.sbt.Sonatype._
 import xerial.sbt.Sonatype.SonatypeKeys._
 
 object TwoTails{
+  //val ScalacVersion = "2.11.8"
+  //val ScalacVersion = "2.12.0"
+  val ScalacVersion = "2.12.1"
+
   def build(pjName: String, base: String) = Project(
     id = pjName,
     base = file(base),
     settings = sonatypeSettings ++
       Seq(
-        scalaVersion := "2.11.8",
+        scalaVersion := ScalacVersion,
         crossVersion := CrossVersion.full,
         crossScalaVersions := Seq("2.11.6", "2.11.7", "2.11.8", "2.12.0", "2.12.1"),
         name := pjName,
@@ -18,10 +22,7 @@ object TwoTails{
           "-deprecation",
           "-encoding", "UTF-8",
           "-feature",
-          "-language:higherKinds",
-          "-language:existentials",
-          "-unchecked"//,
-          //"-Xfuture"
+          "-unchecked"
         ),
         pomExtra := pom,
         publishTo <<= version { v: String =>

@@ -3,8 +3,17 @@ package twotails
 import org.scalatest.{ FlatSpec, Matchers }
 
 //first test arg types in the class constructor
+class KeyWest[A]{
+  @mutualrec final def one(x: Int): Int = if(x < 0) 0 else one(x-1)
+}
+
 class Fiji[A]{
   @mutualrec final def thing(x: A, y: Int): A = if(0 < y) thing(x, y-1) else x
+}
+
+class BonAire[A]{
+  @mutualrec final def one(x: A, y: Int): Int = if(0 < y) two(x, y-1) else y
+  @mutualrec final def two(x: A, y: Int): Int = if(0 < y) one(x, y-1) else y
 }
 
 class Bahama[A]{
