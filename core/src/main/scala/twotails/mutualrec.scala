@@ -129,27 +129,13 @@ final class MutualRecComponent(val global: Global, limitSize: () => Boolean)
           .withAnnotations(trec :: Nil)
           head :: Nil
         case defs =>
-          val (methSym, methTree) = mutualMethod(root, defs, TermName("mutualrec_fn$" + tndx))
-          val forwardedTrees = forwardTrees(methSym, defs)
+          val allTrees = mutualMethod(root, defs, TermName("mutualrec_fn$" + tndx))
           tndx += 1
-          methTree :: forwardedTrees
+          allTrees
       }
 
       if(ungrouped.isEmpty) everythingElse ::: optimized
       else everythingElse ::: ungrouped ::: optimized
-    }
-
-    def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
-      case (tree, indx) =>
-        val DefDef(_, _, _, vp :: vps, _, _) = tree
-        val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
-        val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
-        val forwarderTree = (Apply(refTree, newVp) /: vps){
-          (fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
-        }
-        val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
-        if(tree.symbol.isEffectivelyFinalOrNotOverridden) forwarded.symbol.removeAnnotation(mtrec)
-        forwarded
     }
 
     def component(root: Symbol, adjacencyList: Map[Symbol, List[Symbol]]): List[Symbol] ={
@@ -234,6 +220,19 @@ final class MutualRecComponent(val global: Global, limitSize: () => Boolean)
         localTyper.typedPos(tree.pos){
           DefDef(methSym, rhs)
         }
+
+      def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
+        case (tree, indx) =>
+          val DefDef(_, _, _, vp :: vps, _, _) = tree
+          val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
+          val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
+          val forwarderTree = (Apply(refTree, newVp) /: vps){
+            (fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
+          }
+          val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
+          if(tree.symbol.isEffectivelyFinalOrNotOverridden) forwarded.symbol.removeAnnotation(mtrec)
+          forwarded
+      }
     }
 
   /** @notes The newly created method symbol can be reused without issue but if the symbol `Tree`

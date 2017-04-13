@@ -21,7 +21,7 @@ lazy val plugin = build("twotails", "core").settings(
     //"-P:twotails:memory",
     "-Xprint-types",
     "-Xlog-reflective-calls",
-    //"-Xprint:twotails",
+    "-Xprint:twotails",
     "-Ylog:twotails"//,
     //"-Ycheck:twotails"
   ),

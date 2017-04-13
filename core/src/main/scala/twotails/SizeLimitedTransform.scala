@@ -14,33 +14,22 @@ trait SizeLimited extends Transform with TypingTransformers{
   lazy val mtrec: Symbol = rootMirror.getRequiredClass("twotails.mutualrec")
   lazy val trec = AnnotationInfo(definitions.TailrecClass.tpe, Nil, Nil)
 
-  abstract class MutualMethod extends ((Tree, List[Tree], TermName) => (Symbol, Tree)){
-    def apply(root: Tree, defs: List[Tree], name: TermName): (Symbol, Tree) ={
+  abstract class MutualMethod extends ((Tree, List[Tree], TermName) => List[Tree]){
+    def apply(root: Tree, defs: List[Tree], name: TermName): List[Tree] ={
       val head :: tail = defs
   	  val methSym = mkNewMethodSymbol(head.symbol, name)
   	  val rhs = mkNewMethodRhs(methSym, defs)
       val methTree = mkNewMethodTree(methSym, root, rhs)
+      val forwarded = forwardTrees(methSym, defs)
 
-      (methSym, methTree)
+      methTree :: forwarded
   	}
 
   	def mkNewMethodSymbol(symbol: Symbol, name: TermName): Symbol
   	def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree
   	def mkNewMethodTree(methodSym: Symbol, tree: Tree, rhs: Tree): Tree
+    def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree]
   }
-
-    //TODO: Make a by-name parameter capture class.
-    //
-    //class Capture(val x$1: => A, val x$2: => A...)
-    //var capture$: Capture = Capture(var1, var2...)
-    //then within objects, will have to filter out the args that do this.
-    //
-    //def one$():Unit ={
-    //  continue$ = true
-    //  capture$ = Capture(
-    //    foo,
-    //    bar = stuff())
-    //}
   
     final class SizeLimitedMethod(localTyper: analyzer.Typer) extends MutualMethod{
 
@@ -50,13 +39,23 @@ trait SizeLimited extends Transform with TypingTransformers{
         val param = methSym.newSyntheticValueParam(definitions.IntTpe, TermName("indx"))
       
         methSym.modifyInfo {
-          case GenPolyType(tparams, MethodType(params, res)) => GenPolyType(tparams, MethodType(param :: params, res))
+          case GenPolyType(tparams, MethodType(params, res)) => 
+            val newParams = params.map{
+              //preempt Uncurry phase, transform f: => A into f: () => A
+              case p if p.hasFlag(BYNAMEPARAM) => 
+                val paramSym = p.cloneSymbol(p.owner, p.flags & ~BYNAMEPARAM, p.name)
+                paramSym.modifyInfo{
+                  case GenPolyType(tp, TypeRef(_, definitions.ByNameParamClass, List(ret))) =>
+                    GenPolyType(tp, definitions.functionType(Nil, ret))
+                }
+              case p => p
+            }
+            GenPolyType(tparams, MethodType(param :: newParams, res))
         }
         methSym.removeAnnotation(mtrec)
         localTyper.namer.enterInScope(methSym)
       }
 
-      //TODO: Handle foo: => Any, i.e. a Thunk
       def mkNewMethodVariables(symbol: Symbol): List[ValDef] ={
         val vars: List[ValDef] = symbol.info.paramss.flatten.map{ param =>
           val name = TermName(param.name + "$")
@@ -83,8 +82,11 @@ trait SizeLimited extends Transform with TypingTransformers{
         returnVar :: continueVar :: vars
       }
 
-      def mkVarReassignments(assigns: List[Tree]): List[Tree => Tree] = assigns.map{ lhs => 
-        {t: Tree => localTyper.typedPos(t.pos){ gen.mkAssign(gen.mkAttributedIdent(lhs.symbol), t) } }
+      def mkVarReassignments(assigns: List[Tree]): List[Tree => Tree] = assigns.map{ 
+        case lhs @ ValDef(_, _, tpt, _) => {t: Tree => 
+          val rhs = if(t.tpe == tpt.tpe) t else localTyper.typed{ q"{ () => $t }" }//gen.mkFunctionTypeTree(Nil, t)
+          localTyper.typedPos(t.pos){ gen.mkAssign(gen.mkAttributedIdent(lhs.symbol), rhs) } 
+        }
       }
 
       def mkIndexAssignment(indx: Symbol, defdef: List[Tree]): Map[Symbol, () => Tree] =
@@ -175,6 +177,19 @@ trait SizeLimited extends Transform with TypingTransformers{
         localTyper.typed{
           DefDef(sym, rhs.changeOwner(orig.symbol -> sym))
         }
+      }
+
+      def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
+        case (tree, indx) =>
+          val DefDef(_, _, _, vp :: vps, _, _) = tree
+          val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
+          val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
+          val forwarderTree = (Apply(refTree, newVp) /: vps){
+            (fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
+          }
+          val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
+          if(tree.symbol.isEffectivelyFinalOrNotOverridden) forwarded.symbol.removeAnnotation(mtrec)
+          forwarded
       }
     }
 
