@@ -84,7 +84,8 @@ trait SizeLimited extends Transform with TypingTransformers{
 
       def mkVarReassignments(assigns: List[Tree]): List[Tree => Tree] = assigns.map{ 
         case lhs @ ValDef(_, _, tpt, _) => {t: Tree => 
-          val rhs = if(t.tpe == tpt.tpe) t else localTyper.typed{ q"{ () => $t }" }//gen.mkFunctionTypeTree(Nil, t)
+          //Using tpe.widen here because of Int(0){Int(0)} vs Int{Int} types.
+          val rhs = if(t.tpe.widen == tpt.tpe.widen) t else localTyper.typed{ q"{ () => $t }" }
           localTyper.typedPos(t.pos){ gen.mkAssign(gen.mkAttributedIdent(lhs.symbol), rhs) } 
         }
       }
@@ -182,14 +183,28 @@ trait SizeLimited extends Transform with TypingTransformers{
       def forwardTrees(methSym: Symbol, defdef: List[Tree]): List[Tree] = defdef.zipWithIndex.map{
         case (tree, indx) =>
           val DefDef(_, _, _, vp :: vps, _, _) = tree
-          val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
+          //val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
+          val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(forwardArg)
           val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
           val forwarderTree = (Apply(refTree, newVp) /: vps){
-            (fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
+            //(fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
+            (fn, params) => Apply(fn, params map forwardArg)
           }
           val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
           if(tree.symbol.isEffectivelyFinalOrNotOverridden) forwarded.symbol.removeAnnotation(mtrec)
           forwarded
+      }
+
+      def forwardArg(param: Tree): Tree ={
+        //by name params are never repeated params, safe to avoid the check
+        if(param.symbol.hasFlag(BYNAMEPARAM)){
+          val ref = gen.mkAttributedRef(param.symbol)
+          localTyper.typedPos(param.pos){ Function(Nil, ref) }
+          //val fn = localTyper.typedPos(param.pos){ Function(Nil, ref) }.asInstanceOf[Function]
+          //fn.body.changeOwner(param.symbol.owner -> fn.symbol) //do I really need this?
+          //fn
+        }
+        else gen.paramToArg(param.symbol)
       }
     }
 
