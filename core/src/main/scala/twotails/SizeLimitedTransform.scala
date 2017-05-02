@@ -43,8 +43,6 @@ trait SizeLimited extends Transform with TypingTransformers{
             val newParams = params.map{
               //preempt Uncurry phase, transform f: => A into f: () => A
               case p if p.hasFlag(BYNAMEPARAM) => 
-                //TODO: can't I just remove the flag? Why clone?
-                //val paramSym = p.cloneSymbol(p.owner, p.flags & ~BYNAMEPARAM, p.name)
                 p.resetFlag(BYNAMEPARAM)
                 p.modifyInfo{
                   case GenPolyType(tp, TypeRef(_, definitions.ByNameParamClass, List(ret))) =>
@@ -87,12 +85,10 @@ trait SizeLimited extends Transform with TypingTransformers{
       def mkVarReassignments(assigns: List[Tree]): List[Tree => Tree] = assigns.map{ 
         case lhs @ ValDef(_, _, tpt, _) => {t: Tree => 
           //Using tpe.widen here because of Int(0){Int(0)} vs Int{Int} types.
-          val rhs = if(t.tpe.widen == tpt.tpe.widen) t else{
-            val ref = gen.mkAttributedRef(t.symbol)
-            localTyper.typed{ Function(Nil, ref) }
-            //localTyper.typed{ q"{ () => $t }" }
-          }
-          localTyper.typedPos(t.pos){ gen.mkAssign(gen.mkAttributedIdent(lhs.symbol), rhs) } 
+          val rhs = if(t.tpe.widen == tpt.tpe.widen) t else gen.mkAttributedRef(t.symbol)
+          localTyper.typedPos(t.pos){ 
+            gen.mkAssign(gen.mkAttributedIdent(lhs.symbol), rhs) 
+          } 
         }
       }
 
@@ -109,7 +105,11 @@ trait SizeLimited extends Transform with TypingTransformers{
       def mkDone(result: Symbol, continue: Symbol): Tree => Tree = {tree: Tree => 
         val stop = gen.mkZero(definitions.BooleanTpe)
         val cnt = gen.mkAssign(gen.mkAttributedRef(continue), stop) setType definitions.UnitTpe
-        val dn = gen.mkAssign(gen.mkAttributedRef(result), tree) setType definitions.UnitTpe
+        //if it was once a BYNAMEPARAM, it's now a function that needs to be called
+        val finTree = if(tree.tpe <:< result.tpe) tree else{ //TODO: This is wrong, never getting into "else"
+          localTyper.typedPos(tree.pos){ Apply(tree, Nil) }
+        } 
+        val dn = gen.mkAssign(gen.mkAttributedRef(result), finTree) setType definitions.UnitTpe
 
         gen.mkTreeOrBlock(cnt :: dn :: Nil) setType definitions.UnitTpe
       }
@@ -212,9 +212,6 @@ trait SizeLimited extends Transform with TypingTransformers{
         if(param.symbol.hasFlag(BYNAMEPARAM)){
           val ref = gen.mkAttributedRef(param.symbol)
           localTyper.typedPos(param.pos){ Function(Nil, ref) }
-          //val fn = localTyper.typedPos(param.pos){ Function(Nil, ref) }.asInstanceOf[Function]
-          //fn.body.changeOwner(param.symbol.owner -> fn.symbol) //do I really need this?
-          //fn
         }
         else gen.paramToArg(param.symbol)
       }
