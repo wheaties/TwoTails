@@ -18,7 +18,7 @@ lazy val plugin = build("twotails", "core").settings(
     "-Yno-adapted-args",
     "-Ywarn-value-discard",
     "-Ywarn-dead-code",
-    "-P:twotails:memory",
+    //"-P:twotails:memory",
     "-Xprint-types",
     "-Xlog-reflective-calls",
     "-Xprint:twotails",
