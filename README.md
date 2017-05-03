@@ -24,6 +24,7 @@ Some rules to follow to get the code to compile when working with this plugin:
 2. If a single method is annotated with `mutualrec` it will be replaced by a `@tailrec` annotation.
 3. Similarly to `@tailrec`, methods annotated must be effectively final and the return type explicitly provided (effectively final being defined as `final`, `private`, part of a package object, or within a `def`.) 
 4. Methods not within the same parent scope, for example two methods on two different distinct classes, will not be optimized and will result in a compilation error.
+5. Methods with different type-signatures will not be optimized and will result in a compilation error.
 
 ## Including
 
