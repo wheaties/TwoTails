@@ -7,6 +7,7 @@ object TwoTails{
   //val ScalacVersion = "2.11.11"
   //val ScalacVersion = "2.12.0"
   val ScalacVersion = "2.12.4"
+  val Versions = Seq("2.11.6", "2.11.7", "2.11.8", "2.11.11", "2.12.0", "2.12.1", "2.12.2", "2.12.3", "2.12.4")
 
   def build(pjName: String, base: String) = Project(
     id = pjName,
@@ -16,7 +17,7 @@ object TwoTails{
       Seq(
         scalaVersion := ScalacVersion,
         crossVersion := CrossVersion.full,
-        crossScalaVersions := Seq("2.11.6", "2.11.7", "2.11.8", "2.12.0", "2.12.1", "2.12.2", "2.12.3", "2.12.4"),
+        crossScalaVersions := Versions,
         name := pjName,
         organization := "com.github.wheaties",
         scalacOptions := Seq(

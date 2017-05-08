@@ -3,7 +3,7 @@ import TwoTails._
 lazy val root = (project in file(".")).settings(
   scalaVersion := ScalacVersion,
   crossVersion := CrossVersion.full,
-  crossScalaVersions := Seq("2.11.6", "2.11.7", "2.11.8", "2.12.0", "2.12.1", "2.12.2"),
+  crossScalaVersions := Versions,
   publishArtifact := false
 )
 .aggregate(plugin, lib)
