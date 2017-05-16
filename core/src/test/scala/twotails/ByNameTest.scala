@@ -28,6 +28,12 @@ class BumbleBee{
   @mutualrec final def two(x: Int, y: => Int): Int = if(0 < x) one(x-1, y) else act{ () => y }
 }
 
+//TODO: This really is more of a "does this compile" thing. Move to Partest.
+class QueenBee{
+  @mutualrec final def one(x: Int, y: => Either[Int,Int]): Either[Int,Int] = if(0 < x) two(x-1, y) else y
+  @mutualrec final def two(x: Int, y: => Either[Int,Int]): Either[Int,Int] = if(0 < x) one(x-1, y) else y
+}
+
 class ByNameTest extends FlatSpec with Matchers{
   val fourK = 400000
 
@@ -35,5 +41,12 @@ class ByNameTest extends FlatSpec with Matchers{
     val yellow = new YelloJacket
 
     yellow.one(fourK, 5) should equal(5)
+  }
+
+  "mutually recursive functions with byname parameters" should "just work" in{
+  	val wasp = new Wasp
+
+  	noException should be thrownBy wasp.one(fourK, 5)
+  	wasp.one(fourK, fourK) should equal(1)
   }
 }

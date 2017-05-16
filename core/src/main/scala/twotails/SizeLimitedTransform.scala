@@ -89,7 +89,7 @@ trait SizeLimited extends Transform with TypingTransformers{
             case t: Literal => t
             case t: Tree => 
               //Using tpe.widen here because of Int(0){Int(0)} vs Int{Int} types.
-              val rhs = if(t.tpe.widen == tpt.tpe.widen) t else gen.mkAttributedRef(t.symbol)
+              val rhs = if(t.tpe.widen <:< tpt.tpe.widen) t else gen.mkAttributedRef(t.symbol)
               localTyper.typedPos(t.pos){ 
                 gen.mkAssign(gen.mkAttributedIdent(lhs.symbol), rhs) 
               }
@@ -109,34 +109,18 @@ trait SizeLimited extends Transform with TypingTransformers{
 
     /** Creates the final capture of the end value to be returned from the transformed 
      *  function. Handles the special case of byname parameters whose symbols have 
-     *  previously been replaced.
+     *  previously been replaced with a symbol of type Function0.
      */
     def mkDone(result: Symbol, continue: Symbol): Tree => Tree = {tree: Tree => 
       val stop = gen.mkZero(definitions.BooleanTpe)
       val cnt = gen.mkAssign(gen.mkAttributedRef(continue), stop) setType definitions.UnitTpe
-      //use the symbol because the tree was set in typer phase before substitution.
-      val treeRef = tree match{
-        case Literal(_) => tree
-        case Apply(_, _) => tree
-        //make sure not to APPLY if a function is the expected result.
-        case _ if tree.symbol.tpeHK.dealias <:< result.tpeHK.dealias => tree
-        case _ => 
-          val ref = gen.mkAttributedRef(tree.symbol)
-          ref.tpe match{
-            case TypeRef(_, sym, List(res)) if !sym.isAnonymousFunction => sym.name match{
-              case TypeName("Function0") => atPos(tree.pos){
-                Apply(ref, Nil) setType res
-              }
-              case _ => ref
-            }
-            case _ => ref
-          }
-      }
-      val dn = gen.mkAssign(gen.mkAttributedRef(result), treeRef) setType definitions.UnitTpe
+      val dn = gen.mkAssign(gen.mkAttributedRef(result), tree) setType definitions.UnitTpe
 
       gen.mkTreeOrBlock(cnt :: dn :: Nil) setType definitions.UnitTpe
     }
 
+    //TODO: ok, right here I should be looking at the original symbols to detect if they were
+    //      byname parameters of the original method, then substitution of the tree!
     def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree ={
       val result :: continue :: index :: variables = mkNewMethodVariables(methSym)
       val indexAssignments = mkIndexAssignment(index.symbol, defdef)
@@ -164,12 +148,20 @@ trait SizeLimited extends Transform with TypingTransformers{
         }
 
         val sym = mkNestedMethodSymbol(methSym, tree)
-        val old = oldSkolems ::: tree.symbol.typeParams ::: vparams.flatMap(_.map(_.symbol))
+        val vpsyms = vparams.flatMap(_.map(_.symbol))
+        val old = oldSkolems ::: tree.symbol.typeParams ::: vpsyms
         val neww = deskolemized ::: methSym.typeParams ::: sym.info.paramss.flatten
 
+        val byNamePairs = vpsyms.zip(sym.info.paramss.flatten).filter{
+          case (orig, _) => orig.hasFlag(BYNAMEPARAM)
+        }.toMap
+        val byNameTransforer = new ByNameTransformer(byNamePairs)
+
         val methRhs = callTransformer.transform{
-          rhs.substituteSymbols(old, neww)
+          byNameTransforer.transform(rhs)
+            .substituteSymbols(old, neww)
             .changeOwner(tree.symbol -> sym)
+          
         }
 
         localTyper.typed{
@@ -237,6 +229,27 @@ trait SizeLimited extends Transform with TypingTransformers{
         localTyper.typedPos(param.pos){ Function(Nil, ref) }
       }
       else gen.paramToArg(param.symbol)
+    }
+  }
+
+  /** Remaps the byname parameters into an APPLY much like what will happen during UnCurry.
+   *  TODO: Figure out a way to move after "uncurry." Would save a lot of hassle.
+   */
+  final class ByNameTransformer(sub: Map[Symbol, Symbol]) extends Transformer{
+    override def transform(tree: Tree): Tree = tree match{
+      //take {() => byname} and convert to byname
+      case Function(Nil, x) if sub.contains(x.symbol) => gen.mkAttributedRef(sub(x.symbol))
+      case Ident(_) if sub.contains(tree.symbol) => remapByName(tree)
+      case Select(qual, _) if sub.contains(qual.symbol) => remapByName(qual)
+      case _ => super.transform(tree)
+    }
+
+    //assumes tree.tpe != gen.mkAttributedRef(symbol).tpe
+    private def remapByName(tree: Tree): Tree ={
+      val ref = gen.mkAttributedRef(sub(tree.symbol))
+      atPos(tree.pos){
+        Apply(ref, Nil) setType tree.tpe
+      }
     }
   }
 

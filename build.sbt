@@ -23,7 +23,9 @@ lazy val plugin = build("twotails", "core").settings(
     "-Xlog-reflective-calls",
     "-Xprint:twotails",
     "-Ylog:twotails"//,
-    //"-Ycheck:twotails"
+    //"-Xprint:tailcalls"
+    //"-Ycheck:twotails"//,
+    //"-Xshow-phases"
   ),
   libraryDependencies ++= Seq(
     "org.scalatest" %% "scalatest" % "3.0.0" % "test"
