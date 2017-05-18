@@ -5,7 +5,7 @@ import annotation.{tailrec, switch}
 import java.lang.StackOverflowError
 
 class Foo{
-  @mutualrec final def yo(x: Int): Int = if(0 < x) yo(x-1) else 0
+  @mutualrec final def yo(x: Int): Int = if(0 < x)yo(x-1) else 0
 }
 
 class Foo2{
@@ -40,7 +40,7 @@ class Dog{
   }
 }*/
 
-class Moose{
+class Moose{ //TODO: this is the one with the infinite recursion
   @mutualrec final def one(count: Int): Int = (count: @switch) match{
   	case 0 => 0
   	case 1 => three(0)
@@ -64,6 +64,11 @@ final class Chipmunk{
     throw new Exception("bam!")
   } 
   else one(x-1)
+}
+
+final class HedgeHog{
+  @mutualrec def one(x: Int): Int = if(x < 0) throw new Exception(s"one:$x") else two(x-1)
+  @mutualrec def two(x: Int): Int = if(x < 0) throw new Exception(s"two:$x") else one(x-1)
 }
 
 class BasicTest extends FlatSpec with Matchers{
@@ -94,6 +99,7 @@ class BasicTest extends FlatSpec with Matchers{
     val moose = new Moose
 
     moose.one(fourK) should equal (0)
+    System.out.println("Done")
   }
 
   "An exception thrown by a mutually recursive function" should "have the correct position" in{

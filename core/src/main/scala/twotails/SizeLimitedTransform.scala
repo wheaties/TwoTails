@@ -86,7 +86,7 @@ trait SizeLimited extends Transform with TypingTransformers{
       case lhs @ ValDef(_, _, tpt, _) => 
         new (Tree => Tree){ 
           def apply(tree: Tree) = tree match{ 
-            case t: Literal => t
+            case t: Literal => gen.mkAssign(gen.mkAttributedIdent(lhs.symbol), t) setType definitions.UnitTpe
             case t: Tree => 
               //Using tpe.widen here because of Int(0){Int(0)} vs Int{Int} types.
               val rhs = if(t.tpe.widen <:< tpt.tpe.widen) t else gen.mkAttributedRef(t.symbol)
@@ -108,8 +108,7 @@ trait SizeLimited extends Transform with TypingTransformers{
       }(breakOut)
 
     /** Creates the final capture of the end value to be returned from the transformed 
-     *  function. Handles the special case of byname parameters whose symbols have 
-     *  previously been replaced with a symbol of type Function0.
+     *  function.
      */
     def mkDone(result: Symbol, continue: Symbol): Tree => Tree = {tree: Tree => 
       val stop = gen.mkZero(definitions.BooleanTpe)
@@ -240,7 +239,6 @@ trait SizeLimited extends Transform with TypingTransformers{
       //take {() => byname} and convert to byname
       case Function(Nil, x) if sub.contains(x.symbol) => gen.mkAttributedRef(sub(x.symbol))
       case Ident(_) if sub.contains(tree.symbol) => remapByName(tree)
-      case Select(qual, _) if sub.contains(qual.symbol) => remapByName(qual)
       case _ => super.transform(tree)
     }
 
@@ -272,7 +270,7 @@ trait SizeLimited extends Transform with TypingTransformers{
         gen.mkTreeOrBlock(multiArgs(tree)) setType definitions.UnitTpe
       case Block(stats, expr) =>
         val exp = transform(expr)
-        treeCopy.Block(tree, transformStats(stats, currentOwner), exp) setType exp.tpe
+        treeCopy.Block(tree, stats, exp) setType exp.tpe
       case If(pred, t, f) =>
         val ttrue = transform(t)
         val ffalse = transform(f)
