@@ -37,24 +37,37 @@ trait SizeLimited extends Transform with TypingTransformers{
       val flags = METHOD | FINAL | PRIVATE | ARTIFACT
       val methSym = symbol.cloneSymbol(symbol.owner, flags, name)
       val param = methSym.newSyntheticValueParam(definitions.IntTpe, TermName("indx"))
+
+      //handle multi-parameter arg lists
+      def modRes(typ: Type): Type = typ match{
+        case MethodType(params, res) => 
+          MethodType(replaceByNameParams(params), modRes(res))
+        case _ => typ
+      }
     
       methSym.modifyInfo {
         case GenPolyType(tparams, MethodType(params, res)) => 
-          val newParams = params.map{
-            //preempt Uncurry phase, transform f: => A into f: () => A
-            case p if p.hasFlag(BYNAMEPARAM) => 
-              p.resetFlag(BYNAMEPARAM)
-              p.modifyInfo{
-                case GenPolyType(tp, TypeRef(_, definitions.ByNameParamClass, List(ret))) =>
-                  GenPolyType(tp, definitions.functionType(Nil, ret))
-              }
-            case p => p
-          }
-          GenPolyType(tparams, MethodType(param :: newParams, res))
+          val newParams = replaceByNameParams(params)
+          val newRes = modRes(res)
+          GenPolyType(tparams, MethodType(param :: newParams, newRes))
+        case GenPolyType(tparams, NullaryMethodType(res)) => //Why do they do this?!
+          GenPolyType(tparams, MethodType(param :: Nil, res))
       }
       methSym.removeAnnotation(mtrec)
       localTyper.namer.enterInScope(methSym)
     }
+
+    def replaceByNameParams(params: List[Symbol]): List[Symbol] =
+      params.map{
+        //preempt Uncurry phase, transform f: => A into f: () => A
+        case p if p.hasFlag(BYNAMEPARAM) => 
+          p.resetFlag(BYNAMEPARAM)
+          p.modifyInfo{
+            case GenPolyType(tp, TypeRef(_, definitions.ByNameParamClass, List(ret))) =>
+              GenPolyType(tp, definitions.functionType(Nil, ret))
+          }
+        case p => p
+      }
 
     def mkNewMethodVariables(symbol: Symbol): List[ValDef] ={
       val vars: List[ValDef] = symbol.info.paramss.flatten.map{ param =>
@@ -82,19 +95,38 @@ trait SizeLimited extends Transform with TypingTransformers{
       returnVar :: continueVar :: vars
     }
 
-    def mkVarReassignments(assigns: List[Tree]): List[Tree => Tree] = assigns.map{ 
-      case lhs @ ValDef(_, _, tpt, _) => 
-        new (Tree => Tree){ 
-          def apply(tree: Tree) = tree match{ 
-            case t: Literal => gen.mkAssign(gen.mkAttributedIdent(lhs.symbol), t) setType definitions.UnitTpe
-            case t: Tree => 
-              //Using tpe.widen here because of Int(0){Int(0)} vs Int{Int} types.
-              val rhs = if(t.tpe.widen <:< tpt.tpe.widen) t else gen.mkAttributedRef(t.symbol)
-              localTyper.typedPos(t.pos){ 
-                gen.mkAssign(gen.mkAttributedIdent(lhs.symbol), rhs) 
+    //TODO: Somehow get this phase after Uncurry. This doesn't capture corner cases in
+    //      byname parameters...
+    def mkVarReassignments(assigns: List[Tree]): List[(Tree, Symbol) => Tree] ={
+      def mkAssign(l: Tree, r: Tree): Tree ={
+        gen.mkAssign(gen.mkAttributedRef(l.symbol), r) setType definitions.UnitTpe
+      }
+
+      def isFn0(tree: Tree): Boolean = tree match{
+        case Literal(_) => false
+        case ValDef(_, _, _, Literal(_)) => false
+        case ValDef(_, _, _, rhs) => rhs.tpe.typeSymbol.isSubClass(definitions.FunctionClass(0))
+        case _ => tree.tpe.typeSymbol.isSubClass(definitions.FunctionClass(0))
+      }
+
+      //attempting to handle blocks of code that should become anonymous functions.
+      assigns.map{ lhs =>
+        if(!isFn0(lhs)) { (t: Tree, s: Symbol) => mkAssign(lhs, t) }
+        else { (that: Tree, currentOwner: Symbol) =>
+          System.out.println(s"VALUE: $that, ${that.symbol}")
+          that match{ 
+            case t: Tree if(isFn0(t)) => mkAssign(lhs, t)
+            case Apply(fn, Nil) if isFn0(fn) => mkAssign(lhs, fn)
+            case Block(Nil, expr) if isFn0(expr) => mkAssign(lhs, expr)
+            case t: Tree =>
+              val fn = localTyper.typedPos(t.pos){
+                Function(Nil, t)
               }
-          } 
+              fn.asInstanceOf[Function].body changeOwner (currentOwner -> fn.symbol)
+              mkAssign(lhs, fn)
+          }
         }
+      }
     }
 
     def mkIndexAssignment(indx: Symbol, defdef: List[Tree]): Map[Symbol, () => Tree] =
@@ -118,8 +150,6 @@ trait SizeLimited extends Transform with TypingTransformers{
       gen.mkTreeOrBlock(cnt :: dn :: Nil) setType definitions.UnitTpe
     }
 
-    //TODO: ok, right here I should be looking at the original symbols to detect if they were
-    //      byname parameters of the original method, then substitution of the tree!
     def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree ={
       val result :: continue :: index :: variables = mkNewMethodVariables(methSym)
       val indexAssignments = mkIndexAssignment(index.symbol, defdef)
@@ -160,7 +190,6 @@ trait SizeLimited extends Transform with TypingTransformers{
           byNameTransforer.transform(rhs)
             .substituteSymbols(old, neww)
             .changeOwner(tree.symbol -> sym)
-          
         }
 
         localTyper.typed{
@@ -170,8 +199,9 @@ trait SizeLimited extends Transform with TypingTransformers{
 
       val cases = functions.zipWithIndex.map{
         case (nest, i) => 
+          val nestRef = gen.mkAttributedRef(nest.symbol)
           val syms = variables.map{ x => gen.mkAttributedRef(x.symbol) }
-          cq"$i => ${nest.symbol}(..$syms)"
+          cq"$i => $nestRef(..$syms)"
       }
 
       val cntIdent = gen.mkAttributedRef(continue.symbol)
@@ -187,6 +217,7 @@ trait SizeLimited extends Transform with TypingTransformers{
         result :: continue :: index :: variables ::: functions ::: List(loop, resIdent)
       }
       localTyper.typed{ block }
+      //block setType resIdent.tpe
     }
 
     def mkNewMethodTree(methodSym: Symbol, tree: Tree, rhs: Tree): Tree =
@@ -242,12 +273,10 @@ trait SizeLimited extends Transform with TypingTransformers{
       case _ => super.transform(tree)
     }
 
-    //assumes tree.tpe != gen.mkAttributedRef(symbol).tpe
     private def remapByName(tree: Tree): Tree ={
       val ref = gen.mkAttributedRef(sub(tree.symbol))
-      atPos(tree.pos){
-        Apply(ref, Nil) setType tree.tpe
-      }
+      //TODO: if put in a localTyper, get "R" instead of, say, an "Int" <- ref not giving right type?
+      Apply(ref, Nil) setType tree.tpe
     }
   }
 
@@ -261,7 +290,7 @@ trait SizeLimited extends Transform with TypingTransformers{
    *  @param index the lookup table for index reassignment
    *  @param done converts the return value into shared variable reassignment
    */
-  final class SizedCallTransformer(state: List[Tree => Tree],
+  final class SizedCallTransformer(state: List[(Tree, Symbol) => Tree],
                                    index: Map[Symbol, () => Tree],
                                    done: Tree => Tree) extends Transformer{
 
@@ -329,7 +358,7 @@ trait SizeLimited extends Transform with TypingTransformers{
       case Apply(fn, args) => multiArgs(fn, args :: acc)
       case _ => 
         index(tree.symbol)() :: acc.flatten.zip(state).map{
-          case (arg, fn) => fn(arg) 
+          case (arg, fn) => fn(arg, currentOwner) 
         }
     }
   }

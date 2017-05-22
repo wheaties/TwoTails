@@ -22,9 +22,10 @@ lazy val plugin = build("twotails", "core").settings(
     "-Xprint-types",
     "-Xlog-reflective-calls",
     "-Xprint:twotails",
+    //"-Xprint:patmat",
     "-Ylog:twotails"//,
-    //"-Xprint:tailcalls"
-    //"-Ycheck:twotails"//,
+    //"-Ycheck:twotails",
+    //"-Ycheck:patmat"
     //"-Xshow-phases"
   ),
   libraryDependencies ++= Seq(
