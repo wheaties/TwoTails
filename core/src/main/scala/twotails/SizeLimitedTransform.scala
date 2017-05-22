@@ -109,22 +109,24 @@ trait SizeLimited extends Transform with TypingTransformers{
         case _ => tree.tpe.typeSymbol.isSubClass(definitions.FunctionClass(0))
       }
 
+      def replace(lhs: Tree, rhs: Tree, currentOwner: Symbol): Tree = rhs match{ 
+        case t: Tree if(isFn0(t)) => mkAssign(lhs, t)
+        case Apply(fn, Nil) if isFn0(fn) => mkAssign(lhs, fn)
+        case Block(Nil, expr) => replace(lhs, expr, currentOwner)
+        case t: Tree =>
+          val fn = localTyper.typedPos(t.pos){
+            Function(Nil, t)
+          }
+          fn.asInstanceOf[Function].body changeOwner (currentOwner -> fn.symbol)
+          mkAssign(lhs, fn)
+      }
+
       //attempting to handle blocks of code that should become anonymous functions.
       assigns.map{ lhs =>
         if(!isFn0(lhs)) { (t: Tree, s: Symbol) => mkAssign(lhs, t) }
         else { (that: Tree, currentOwner: Symbol) =>
           System.out.println(s"VALUE: $that, ${that.symbol}")
-          that match{ 
-            case t: Tree if(isFn0(t)) => mkAssign(lhs, t)
-            case Apply(fn, Nil) if isFn0(fn) => mkAssign(lhs, fn)
-            case Block(Nil, expr) if isFn0(expr) => mkAssign(lhs, expr)
-            case t: Tree =>
-              val fn = localTyper.typedPos(t.pos){
-                Function(Nil, t)
-              }
-              fn.asInstanceOf[Function].body changeOwner (currentOwner -> fn.symbol)
-              mkAssign(lhs, fn)
-          }
+          replace(lhs, that, currentOwner)
         }
       }
     }
@@ -275,6 +277,7 @@ trait SizeLimited extends Transform with TypingTransformers{
 
     private def remapByName(tree: Tree): Tree ={
       val ref = gen.mkAttributedRef(sub(tree.symbol))
+      System.out.println(s"REMAP: $ref, ${ref.symbol}, ${ref.symbol.tpe}, ${ref.tpe.typeSymbol}")
       //TODO: if put in a localTyper, get "R" instead of, say, an "Int" <- ref not giving right type?
       Apply(ref, Nil) setType tree.tpe
     }
