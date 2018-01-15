@@ -1,6 +1,4 @@
 import TwoTails._
-import com.typesafe.sbt.SbtSite.SiteKeys._
-import com.typesafe.sbt.SbtGhPages.GhPagesKeys._
 
 lazy val root = (project in file(".")).settings(
   scalaVersion := ScalacVersion,
