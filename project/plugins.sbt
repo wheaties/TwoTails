@@ -2,7 +2,7 @@ resolvers += Classpaths.sbtPluginReleases
 
 resolvers += Resolver.sonatypeRepo("releases")
 
-addSbtPlugin("org.tpolecat" % "tut-plugin" % "0.5.6")
+addSbtPlugin("org.tpolecat" % "tut-plugin" % "0.6.2")
 
 addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "2.0")
 
