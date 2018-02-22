@@ -17,6 +17,13 @@ class Bazooka{
   @mutualrec final def two(x: Int)(y: Int)(z: Int): Int = if(0 < x) one(x-1)(y-1)(z+1) else z
 }
 
+//This is more of a "does this compile" check. Move to Par-test.
+//TODO: This fails!
+/*class RocketLauncher{
+  @mutualrec final def one(x: Int, y: Int*): Int = if(0 < x) two(x-1, y: _*) else 0
+  @mutualrec final def two(x: Int, y: Int*): Int = if(0 < x) one(x-1, y: _*) else 0
+}*/
+
 class ArgumentListTest extends FlatSpec with Matchers{
   val fourK = 400000
 

@@ -2,7 +2,12 @@ package twotails
 
 import org.scalatest.{ FlatSpec, Matchers }
 
-class YelloJacket{
+class Hive{
+  @mutualrec final def one(x: Int, y: => Int): Int = if(0 < x) two(x-1, 1) else 0
+  @mutualrec final def two(x: Int, y: => Int): Int = if(0 < x) one(x-1, 1) else 0
+}
+
+/*class YelloJacket{
   @mutualrec final def one(x: Int, y: => Int): Int = if(0 < x) two(x-1, y) else y
   @mutualrec final def two(x: Int, y: => Int): Int = if(0 < x) one(x-1, y) else y
 }
@@ -34,6 +39,27 @@ class QueenBee{
   @mutualrec final def two(x: Int, y: => Either[Int,Int]): Either[Int,Int] = if(0 < x) one(x-1, y) else y
 }
 
+//TODO: This really is more of a "does this compile" thing. Move to Partest.
+class Larva{
+  @mutualrec final def one(x: Int)(y: => Int): Int = if(0 < x) two(x-1)(y) else y
+  @mutualrec final def two(x: Int)(y: => Int): Int = if(0 < x) one(x-1)(y) else y
+}
+
+//TODO: Partest: this tests the ownership of "z" when transforming from named to Function0.
+class Drone{
+  @mutualrec final def one(x: Int)(y: => Int): Int = if(0 < x) two(x-1){
+    val z = (x % 8096) - 1
+    z+1
+  } else y
+  @mutualrec final def two(x: Int)(y: => Int): Int = if(0 < x) one(x-1)(y) else y
+}
+
+//TODO: This really is more of a "does this compile" thing. Move to Partest.
+class Honey[T <: Int]{
+  @mutualrec final def one(x: Int, y: => T): T = if(0 < x) two(x-1, y) else y
+  @mutualrec final def two(x: Int, y: => T): T = if(0 < x) one(x-1, y) else y
+}
+
 class ByNameTest extends FlatSpec with Matchers{
   val fourK = 400000
 
@@ -49,4 +75,4 @@ class ByNameTest extends FlatSpec with Matchers{
   	noException should be thrownBy wasp.one(fourK, 5)
   	wasp.one(fourK, fourK) should equal(1)
   }
-}
+}*/
