@@ -6,7 +6,8 @@ import xerial.sbt.Sonatype.SonatypeKeys._
 object TwoTails{
   val ScalacVersion = "2.12.4"
   val Versions = Seq("2.11.6", "2.11.7", "2.11.8", "2.11.11", 
-                     "2.12.0", "2.12.1", "2.12.2", "2.12.3", "2.12.4")
+                     "2.12.0", "2.12.1", "2.12.2", "2.12.3", 
+                     "2.12.4")
 
   def build(pjName: String, base: String) = Project(
     id = pjName,
