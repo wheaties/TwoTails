@@ -4,7 +4,6 @@ import scala.tools.nsc.Global
 import scala.tools.nsc.transform.{Transform, TypingTransformers}
 import scala.tools.nsc.symtab.Flags._
 import collection.mutable.{Map => MMap}
-import collection.breakOut
 
 trait SizeLimited extends Transform with TypingTransformers{
   val global: Global //Trick for the "import global._" to be recognized across files.
@@ -63,7 +62,7 @@ trait SizeLimited extends Transform with TypingTransformers{
           val paramSym = symbol.newVariable(name, NoPosition, ARTIFACT)
             .setInfo(param.tpeHK)
           ValDef(paramSym, gen.mkAttributedIdent(param)) setType definitions.UnitTpe
-        }(breakOut)
+        }
         val returnVar = {
           val ret = symbol.asMethod.returnType.dealias
           val sym = symbol.newVariable(TermName("result$"), NoPosition, ARTIFACT)
@@ -95,7 +94,7 @@ trait SizeLimited extends Transform with TypingTransformers{
               gen.mkAssign(gen.mkAttributedIdent(indx), rhs) setType definitions.UnitTpe
             }
             (d.symbol, fn)
-        }(breakOut)
+        }.toMap
 
       def mkDone(result: Symbol, continue: Symbol): Tree => Tree = {tree: Tree => 
         val stop = gen.mkZero(definitions.BooleanTpe)
