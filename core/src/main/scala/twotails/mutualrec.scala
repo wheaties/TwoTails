@@ -5,7 +5,6 @@ import scala.tools.nsc.{Global, Phase}
 import scala.tools.nsc.plugins.{Plugin, PluginComponent}
 import scala.tools.nsc.symtab.Flags._
 import collection.mutable.{Map => MMap, Set => MSet}
-import collection.breakOut
 
 class TwoTailsPlugin(val global: Global) extends Plugin{
   val name = "twotails"
@@ -106,12 +105,12 @@ final class MutualRecComponent(val global: Global, limitSize: () => Boolean)
         case ddef: DefDef => hasMutualRec(ddef)
         case _ => false
       }
-      val symbols: Map[Symbol, Tree] = recs.map{ t => (t.symbol, t) }(breakOut)
+      val symbols: Map[Symbol, Tree] = recs.map{ t => (t.symbol, t) }.toMap
       val walker = new CallGraphWalker(symbols.keySet, !limitSize())
       val adjacencyList: Map[Symbol, List[Symbol]] = recs.map{ tree =>
         val calls = walker.walk(tree)
         (tree.symbol, calls)
-      }(breakOut)
+      }.toMap
       val groups ={
         var grouped: List[List[Symbol]] = Nil
         for(t <- recs if !grouped.exists(_.contains(t.symbol))){
@@ -191,7 +190,7 @@ final class MutualRecComponent(val global: Global, limitSize: () => Boolean)
       def mkNewMethodRhs(methSym: Symbol, defdef: List[Tree]): Tree ={
         val defSymbols: Map[Symbol, () => Tree] = defdef.zipWithIndex.map{
           case (d, i) => (d.symbol, {() => localTyper.typed(Literal(Constant(i)))})
-        }(breakOut)
+        }.toMap
         val callTransformer = new AllocCallTransformer(methSym, defSymbols)
         val indxSym :: paramSymbols = methSym.info.paramss.flatten
         val defrhs = defdef.map{ tree =>
