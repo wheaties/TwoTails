@@ -143,7 +143,7 @@ final class MutualRecComponent(val global: Global, limitSize: () => Boolean)
         val DefDef(_, _, _, vp :: vps, _, _) = tree
         val newVp = localTyper.typed(Literal(Constant(indx))) :: vp.map(p => gen.paramToArg(p.symbol))
         val refTree = gen.mkAttributedRef(tree.symbol.owner.thisType, methSym)
-        val forwarderTree = (Apply(refTree, newVp) /: vps){
+        val forwarderTree = vps.foldLeft(Apply(refTree, newVp)){
           (fn, params) => Apply(fn, params map (p => gen.paramToArg(p.symbol)))
         }
         val forwarded = deriveDefDef(tree)(_ => localTyper.typedPos(tree.symbol.pos)(forwarderTree))
