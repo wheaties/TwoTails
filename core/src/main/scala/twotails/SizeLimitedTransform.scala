@@ -5,7 +5,7 @@ import scala.tools.nsc.transform.{Transform, TypingTransformers}
 import scala.tools.nsc.symtab.Flags._
 import collection.mutable.{Map => MMap}
 
-trait SizeLimited extends Transform with TypingTransformers{
+trait SizeLimited extends Transform with TypingTransformers with Compat {
   val global: Global //Trick for the "import global._" to be recognized across files.
 
   import global._
@@ -216,7 +216,7 @@ trait SizeLimited extends Transform with TypingTransformers{
       case that: Function => done(that)
       case that: New => done(that)
       case that: Assign => done(that)
-      case that: AssignOrNamedArg => done(that)
+      case that: NamedArg => done(that)
       case that: Throw => that //well, it ain't 'done' if it's going to throw.
       case that: Super => done(that)
       case that: TypeBoundsTree => that
