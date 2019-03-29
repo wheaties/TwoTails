@@ -283,7 +283,7 @@ final class MutualRecComponent(val global: Global, limitSize: () => Boolean)
     private val band = currentRun.runDefinitions.Boolean_and
 
     def walk(tree: Tree): List[Symbol] ={
-      calls clear ()
+      calls.clear()
       tree match { 
         case x:DefDef => traverse(x.rhs)
         case _ => ()
