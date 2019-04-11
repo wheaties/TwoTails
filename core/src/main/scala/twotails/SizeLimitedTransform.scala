@@ -58,7 +58,7 @@ trait SizeLimited extends Transform with TypingTransformers with Compat {
       //TODO: Handle foo: => Any, i.e. a Thunk
       def mkNewMethodVariables(symbol: Symbol): List[ValDef] ={
         val vars: List[ValDef] = symbol.info.paramss.flatten.map{ param =>
-          val name = TermName(param.name + "$")
+          val name = TermName(param.name.toString + "$")
           val paramSym = symbol.newVariable(name, NoPosition, ARTIFACT)
             .setInfo(param.tpeHK)
           ValDef(paramSym, gen.mkAttributedIdent(param)) setType definitions.UnitTpe
@@ -164,7 +164,7 @@ trait SizeLimited extends Transform with TypingTransformers with Compat {
         }
 
       def mkNestedMethodTree(methSym: Symbol, orig: DefDef, rhs: Tree): Tree ={
-        val name = TermName(orig.name + "$")
+        val name = TermName(orig.name.toString + "$")
         val sym = methSym.newMethod(name, NoPosition, ARTIFACT)
         sym.setInfo {
           GenPolyType(Nil, MethodType(Nil, definitions.UnitTpe))
