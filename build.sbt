@@ -43,7 +43,7 @@ lazy val plugin = build("twotails", "core").settings(
     //"-Ycheck:twotails"
   ),
   libraryDependencies ++= Seq(
-    "org.scalatest" %% "scalatest" % "3.0.8-RC2" % Test
+    "org.scalatest" %% "scalatest" % "3.0.8-RC5" % Test
   )
 )
 .dependsOn(lib)
