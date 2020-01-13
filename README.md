@@ -54,4 +54,4 @@ PRs are welcome and encouraged. Please do not leave any defamatory remarks or sw
 
 Bug reports are appreciated. Bug reports submitted with reproducible errors are more appreciated. Reports of issues with other compiler plugins should be submitted to all plugin projects. New features or feature requests are not bugs.
 
-TwoTails supports the TypeLevel [Code of Conduct](http://typelevel.org/conduct.html). All conversations within the Gitter room and/or other public online venues are asked to respect and adhere to the terms laid out therein (tl;dr? don't be rude, belittle or harass others.) Mutual recursion demands mutual respect.
+TwoTails supports the Typelevel [Code of Conduct](http://typelevel.org/conduct.html). All conversations within the Gitter room and/or other public online venues are asked to respect and adhere to the terms laid out therein (tl;dr? don't be rude, belittle or harass others.) Mutual recursion demands mutual respect.
